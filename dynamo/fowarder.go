@@ -81,7 +81,7 @@ func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[strin
 		gstmID := evts[0].GlobalStreamID()
 		gstm, ok := gstms[gstmID]
 		if !ok {
-			return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, "record gstm not found: "+gstmID)
+			return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, "record gstm not found")
 		}
 
 		if gstm.LastEventID >= evts[0].ID() {
@@ -94,14 +94,23 @@ func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[strin
 			gstm.UpdatedAt = ev.At().UnixNano()
 
 			ver = ver.Incr()
-			ev.SetGlobalVersion(ver)
-			mevs[gstmID] = append(mevs[gstmID], ev)
+			rev, ok := ev.(interface {
+				event.Envelope
+				SetGlobalVersion(v event.Version) event.Envelope
+			})
+			if !ok {
+				return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, "unmarchled event does not support SetGlobalVersion")
+			}
+			rev.SetGlobalVersion(ver)
+			mevs[gstmID] = append(mevs[gstmID], rev)
 		}
 		gstm.Version = ver.String()
 	}
 
 	for gstmID, evs := range mevs {
-		if err := event.Stream(evs).Validate(); err != nil {
+		if err := event.Stream(evs).Validate(func(v *event.Validation) {
+			v.GlobalStream = true
+		}); err != nil {
 			return nil, event.Err(err, gstmID, "during checkpoint process")
 		}
 	}

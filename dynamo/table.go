@@ -11,9 +11,8 @@ import (
 )
 
 const (
-	HashKey  string = "_pk"
-	RangeKey string = "_sk"
-
+	HashKey      string = "_pk"
+	RangeKey     string = "_sk"
 	TTLAttribute string = "_ttl"
 )
 

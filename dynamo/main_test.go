@@ -2,20 +2,17 @@ package dynamo
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand"
 	"os"
-	"reflect"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/redaLaanait/storer/event"
+	"github.com/redaLaanait/storer/internal/testutil"
 )
 
 var dbsvc AdminAPI
@@ -28,62 +25,18 @@ func genTableName(prefix string) string {
 	return prefix + "-" + now + "-" + random
 }
 
-type Event1 struct{ Val string }
-type Event2 struct{ Val string }
-
-func (e *Event2) Dests() []string {
-	return []string{"dest2"}
-}
-
-func genEvents(count int) []interface{} {
-	evts := make([]interface{}, count)
-	for i := 0; i < count; i++ {
-		var evt interface{}
-		if i%2 == 0 {
-			evt = &Event2{"val " + strconv.Itoa(i)}
-		} else {
-			evt = &Event1{"val " + strconv.Itoa(i)}
-		}
-
-		evts[i] = evt
-	}
-	return evts
-}
-
-func formatEnv(env event.Envelope) string {
-	return fmt.Sprintf(`
-		stmID: %s
-		evtID: %s
-		at: %v
-		version: %v
-		globalVersion: %v
-		user: %s
-		data: %v
-	`, env.StreamID(), env.ID(), env.At().UnixNano(), env.Version(), env.GlobalVersion(), env.User(), env.Event())
-}
-
-func cmpEnv(env1, env2 event.Envelope) bool {
-	return env1.ID() == env2.ID() &&
-		env1.StreamID() == env2.StreamID() &&
-		env1.GlobalStreamID() == env2.GlobalStreamID() &&
-		env1.User() == env2.User() &&
-		env1.At().Equal(env2.At()) &&
-		env1.Version().Equal(env2.Version()) &&
-		reflect.DeepEqual(env1.Event(), env2.Event())
-}
-
-func awsConfig(endpoint string) (cfg aws.Config, err error) {
-	cfg, err = config.LoadDefaultConfig(
-		context.Background(),
-		config.WithRegion(""),
-		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-				return aws.Endpoint{URL: endpoint}, nil
-			})),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TEST", "TEST", "TEST")),
-	)
-	return
-}
+// func awsConfig(endpoint string) (cfg aws.Config, err error) {
+// 	cfg, err = config.LoadDefaultConfig(
+// 		context.Background(),
+// 		config.WithRegion(""),
+// 		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
+// 			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+// 				return aws.Endpoint{URL: endpoint}, nil
+// 			})),
+// 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TEST", "TEST", "TEST")),
+// 	)
+// 	return
+// }
 
 func withTable(t *testing.T, dbsvc AdminAPI, tfn func(table string)) {
 	ctx := context.Background()
@@ -109,17 +62,19 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	cfg, err := awsConfig(endpoint)
+	// cfg, err := awsConfig(endpoint)
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
-
-	dbsvc = dynamodb.NewFromConfig(cfg)
+	dbsvc = dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+		o.EndpointResolver = dynamodb.EndpointResolverFromURL(endpoint)
+	})
 
 	event.NewRegister("").
-		Set(Event1{}).
-		Set(Event2{})
+		Set(testutil.Event1{}).
+		Set(testutil.Event2{})
 
 	os.Exit(m.Run())
 }
