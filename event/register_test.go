@@ -1,58 +1,59 @@
 package event
 
 import (
-	"log"
+	"context"
+	"errors"
 	"testing"
-	"time"
 )
 
 func TestRegister(t *testing.T) {
 
-	log.Println("---->", time.Now().UnixNano(), time.Now())
-	type event struct{ Val string }
-	type event2 struct{ Val string }
+	type Event struct{ Val string }
+	type Event2 struct{ Val string }
 
-	reg := NewRegister("foo")
-	defer reg.Clear()
-	// if count := reg.Count(); count != 0 {
-	// 	t.Errorf("Expected: O, got: %d", count)
-	// }
+	namespace := "foo"
+	ctx := context.WithValue(context.Background(), ContextNamespaceKey, namespace)
 
+	reg := NewRegister(namespace)
+
+	// both events are registred whithin the given namespace
 	reg.
-		Set(&event{}).
-		Set(&event{})
+		Set(&Event{}).
+		Set(&Event2{})
 
-	// fmt.Println(reg.Events())
-	// if count := reg.Count(); count != 1 {
-	// 	t.Errorf("Expected: 1, got: %d", count)
-	// }
-
-	if _, err := reg.Get("NoEvent"); err == nil {
-		t.Errorf("Expected error, got nil")
+	// get an unregistred event
+	if _, err := reg.Get("foo.NoEvent"); !errors.Is(err, ErrNotFoundInRegistry) {
+		t.Fatalf("expect err be %v, got %v", ErrNotFoundInRegistry, err)
 	}
 
-	e, err := reg.Get(TypeOf(&event{}))
+	// succesfully find Event in reg
+	e, err := reg.Get(TypeOf(&Event{}))
 	if err != nil {
-		t.Error("Expected err to be nil, got", err)
+		t.Fatal("expected err to be nil, got", err)
+	}
+	if _, ok := e.(*Event); !ok {
+		t.Fatalf("expected casting to %s is ok, got false", TypeOf(&Event{}))
+	}
+	if _, err = reg.Get(TypeOfWithContext(ctx, &Event{})); err != nil {
+		t.Fatal("expected err be nil, got", err)
 	}
 
-	if _, ok := e.(*event); !ok {
-		t.Errorf("Expected casting to %s is ok, got false", TypeOf(&event{}))
-	}
-
+	// only Event2 is registred in global register
 	globReg := NewRegister("")
-	defer globReg.Clear()
-
 	globReg.
-		Set(&event2{})
+		Set(&Event2{})
 
-	_, err = reg.Get(TypeOf(&event2{}))
+	if _, err = globReg.Get(TypeOf(&Event{})); !errors.Is(err, ErrNotFoundInRegistry) {
+		t.Fatalf("expected err be %v, got %v", ErrNotFoundInRegistry, err)
+	}
+	_, err = reg.Get(TypeOf(&Event2{}))
 	if err != nil {
-		t.Error("Expected err to be nil, got", err)
+		t.Fatal("expected err to be nil, got", err)
 	}
 
-	_, err = globReg.Get(TypeOf(&event2{}))
-	if err != nil {
-		t.Error("Expected err to be nil, got", err)
+	// the global registry, in contrast to reg with namespace, does not force it's namespace prefix in event name
+	// thus, Event2 name in registry is {packageName}.Event2 instead of {namespace}.Event2
+	if _, err = globReg.Get(TypeOfWithContext(ctx, &Event2{})); !errors.Is(err, ErrNotFoundInRegistry) {
+		t.Fatal("Expected err be nil, got", err)
 	}
 }

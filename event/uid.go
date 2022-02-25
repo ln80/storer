@@ -13,6 +13,6 @@ func UID() ID {
 	return xid.New()
 }
 
-func UIDFrom(text string) (ID, error) {
-	return xid.FromString(text)
-}
+// func UIDFrom(text string) (ID, error) {
+// 	return xid.FromString(text)
+// }

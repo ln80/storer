@@ -11,9 +11,10 @@ const (
 	EventFormatJSON    = EventFormat("JSON")
 	EventFormatCSV     = EventFormat("CSV")     // not yet supported
 	EventFormatParquet = EventFormat("PARQUET") // not yet supported
+	EventFormatPBuffer = EventFormat("PBuffer") // not yet supported
 )
 
-// Serializer provide a standard encoding/decoding interface for events
+// Serializer provides a standard encoding/decoding interface for events chunks
 type Serializer interface {
 	EventFormat() EventFormat
 	MarshalEvent(event Envelope) ([]byte, error)

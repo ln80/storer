@@ -8,49 +8,57 @@ import (
 //Envelope wraps and adds meta-data to events such us timestamp, stream ID, version
 type Envelope interface {
 	ID() string
-
 	Type() string
-
 	Event() interface{}
-
 	At() time.Time
 
 	StreamID() string
-
 	Version() Version
-
 	GlobalStreamID() string
-
 	GlobalVersion() Version
-
 	User() string
-
-	SetGlobalVersion(v Version) Envelope
 }
 
 type RWEnvelope interface {
 	Envelope
 
 	SetAt(t time.Time) Envelope
-	SetVersion(v Version) Envelope
 	SetUser(userID string) Envelope
+	SetVersion(v Version) Envelope
+	SetGlobalVersion(v Version) Envelope
 }
 
 type EnvelopeOption func(env RWEnvelope)
 
-// Envelop wraps and apply options to the given events
+func WithVersionIncr(startingVer Version, diff VersionSequenceDiff) EnvelopeOption {
+	return func(env RWEnvelope) {
+		env.SetVersion(startingVer)
+		switch diff {
+		case VersionSeqDiff10p0:
+			startingVer = startingVer.doIncr(VersionSeqDiff10p0)
+		case VersionSeqDiffFrac10p0:
+			startingVer = startingVer.doIncr(VersionSeqDiffFrac10p0)
+		case VersionSeqDiffFrac10p1:
+			startingVer = startingVer.doIncr(VersionSeqDiffFrac10p1)
+		}
+	}
+}
+
+// Envelop wraps with options the given events
+// by default:
+// 		it creates a valid timestamp-based stream chunk
+//		it does not set event's version aka sequence
 func Envelop(ctx context.Context, stmID StreamID, evts []interface{}, opts ...EnvelopeOption) []Envelope {
 	envs := make([]Envelope, len(evts))
 	for i, evt := range evts {
 		env := &envelope{
+			globalStreamID: stmID.GlobalID(),
 			streamID:       stmID.String(),
 			event:          evt,
 			eType:          TypeOfWithContext(ctx, evt),
 			eID:            UID().String(),
-			at:             time.Now(),
-			globalStreamID: stmID.Parts()[0], // by default the first part of the stream ID presents ti global one
+			at:             time.Now().UTC(),
 		}
-		// env := EnvelopEvent(ctx, stmID, UID().String(), evt, opts...)
 		if ctx.Value(ContextUserKey) != nil {
 			user := ctx.Value(ContextUserKey).(string)
 			env.SetUser(user)
@@ -64,11 +72,10 @@ func Envelop(ctx context.Context, stmID StreamID, evts []interface{}, opts ...En
 }
 
 type envelope struct {
-	streamID string
-	eID      string
-	eType    string
-	event    interface{}
-
+	streamID       string
+	eID            string
+	eType          string
+	event          interface{}
 	at             time.Time
 	version        Version
 	user           string
@@ -83,11 +90,6 @@ var _ RWEnvelope = &envelope{}
 func (e *envelope) ID() string {
 	return e.eID
 }
-
-// func (e *envelope) SetID(iD string) Envelope {
-// 	e.eID = iD
-// 	return e
-// }
 
 // Type implements the EventType method of the Envelope interface.
 func (e *envelope) Type() string {
@@ -104,30 +106,17 @@ func (e *envelope) At() time.Time {
 	return e.at
 }
 
-func (e *envelope) SetAt(t time.Time) Envelope {
-	e.at = t
-	return e
-}
-
 // Version implements the Version method of the Envelope interface.
 func (e *envelope) Version() Version {
 	return e.version
 }
 
-func (e *envelope) SetVersion(v Version) Envelope {
-	e.version = v
-	return e
-}
-
+// User implements the User method of the Envelope interface.
 func (e *envelope) User() string {
 	return e.user
 }
 
-func (e *envelope) SetUser(userID string) Envelope {
-	e.user = userID
-	return e
-}
-
+// StreamID implements the StreamID method of the Envelope interface.
 func (e *envelope) StreamID() string {
 	return e.streamID
 }
@@ -137,16 +126,30 @@ func (e *envelope) GlobalStreamID() string {
 	return e.globalStreamID
 }
 
-// func (e *envelope) SetGlobalStreamID(gstmID string) Envelope {
-// 	e.globalStreamID = gstmID
-// 	return e
-// }
-
 // GlobalVersion implements the GlobalVersion method of the Envelop interface
 func (e *envelope) GlobalVersion() Version {
 	return e.globalVersion
 }
 
+// SetAt implements the SetAt method of the RWEnvelope interface.
+func (e *envelope) SetAt(t time.Time) Envelope {
+	e.at = t
+	return e
+}
+
+// SetUser implements the SetUser method of the RWEnvelope interface.
+func (e *envelope) SetUser(userID string) Envelope {
+	e.user = userID
+	return e
+}
+
+// SetVersion implements the SetVersion method of the RWEnvelope interface.
+func (e *envelope) SetVersion(v Version) Envelope {
+	e.version = v
+	return e
+}
+
+// SetGlobalVersion implements the SetGlobalVersion method of the RWEnvelope interface.
 func (e *envelope) SetGlobalVersion(v Version) Envelope {
 	e.globalVersion = v
 	return e

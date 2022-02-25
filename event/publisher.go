@@ -10,7 +10,6 @@ type Publisher interface {
 
 func RouteEvents(mevs map[string][]Envelope) map[string][]Envelope {
 	destEvts := make(map[string][]Envelope)
-
 	for _, evs := range mevs {
 		for _, ev := range evs {
 			dests := eventDests(ev.Event())
