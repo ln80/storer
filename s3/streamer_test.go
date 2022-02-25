@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/redaLaanait/storer/event"
+	interevent "github.com/redaLaanait/storer/internal/event"
 	"github.com/redaLaanait/storer/internal/testutil"
 )
 
@@ -26,7 +27,7 @@ func TestEventStreamer_Persist(t *testing.T) {
 
 		t.Run("test persist stream chunk with invalid stmID", func(t *testing.T) {
 			gstmID := event.NewStreamID("")
-			err := streamer.(event.Persister).Persist(ctx, gstmID,
+			err := streamer.(interevent.Persister).Persist(ctx, gstmID,
 				event.Envelop(ctx, gstmID, []interface{}{
 					&testutil.Event1{
 						Val: "test",
@@ -40,7 +41,7 @@ func TestEventStreamer_Persist(t *testing.T) {
 
 		t.Run("test persist stream chunk with invalid stream global version", func(t *testing.T) {
 			nokVer := event.NewVersion()
-			err := streamer.(event.Persister).Persist(ctx, gstmID, event.Envelop(ctx, gstmID, []interface{}{
+			err := streamer.(interevent.Persister).Persist(ctx, gstmID, event.Envelop(ctx, gstmID, []interface{}{
 				&testutil.Event1{
 					Val: "test 1",
 				},
@@ -69,7 +70,7 @@ func TestEventStreamer_Persist(t *testing.T) {
 				env.SetGlobalVersion(okVer)
 				okVer = okVer.Incr()
 			})
-			if err := streamer.(event.Persister).Persist(ctx, gstmID, chunk); err != nil {
+			if err := streamer.(interevent.Persister).Persist(ctx, gstmID, chunk); err != nil {
 				t.Fatalf("expect err be nil, got: %v", err)
 			}
 
@@ -115,14 +116,14 @@ func TestEventStreamer_Replay(t *testing.T) {
 			gver = gver.Incr()
 			chunk1At = chunk1At.Add(5 * time.Millisecond)
 		})
-		if err := streamer.(event.Persister).Persist(ctx, gstmID, chunk1); err != nil {
+		if err := streamer.(interevent.Persister).Persist(ctx, gstmID, chunk1); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 		chunk2 := event.Envelop(ctx, gstmID, testutil.GenEvts(20), func(env event.RWEnvelope) {
 			env.SetGlobalVersion(gver)
 			gver = gver.Incr()
 		})
-		if err := streamer.(event.Persister).Persist(ctx, gstmID, chunk2); err != nil {
+		if err := streamer.(interevent.Persister).Persist(ctx, gstmID, chunk2); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 
@@ -205,7 +206,7 @@ func TestEventStreamer_Replay(t *testing.T) {
 	})
 }
 
-func TestEventMaintainer_ConcatChunks(t *testing.T) {
+func TestEventMaintainer_MergeChunks(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping s3 test event maintainer contat chunks in short mode")
 	}
@@ -224,7 +225,7 @@ func TestEventMaintainer_ConcatChunks(t *testing.T) {
 		chunkSize := 20
 		chunkCount := 10
 		for i := 0; i < chunkCount; i++ {
-			if err := streamer.(event.Persister).Persist(ctx, gstmID,
+			if err := streamer.(interevent.Persister).Persist(ctx, gstmID,
 				event.Envelop(ctx, gstmID, testutil.GenEvts(chunkSize), func(env event.RWEnvelope) {
 					env.SetGlobalVersion(gver)
 					gver = gver.Incr()
@@ -238,11 +239,11 @@ func TestEventMaintainer_ConcatChunks(t *testing.T) {
 			From: event.NewVersion(),
 		}
 
-		if err := streamer.(StreamMaintainer).ConcatChunks(ctx, gstmID, filter); err != nil {
+		if err := streamer.(StreamMaintainer).MergeChunks(ctx, gstmID, filter); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 
-		testutil.PrintMemUsage()
+		// testutil.PrintMemUsage()
 
 		count := 0
 		if err := streamer.Replay(ctx, gstmID, filter, func(ctx context.Context, e event.Envelope) error {
@@ -252,7 +253,7 @@ func TestEventMaintainer_ConcatChunks(t *testing.T) {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 
-		testutil.PrintMemUsage()
+		// testutil.PrintMemUsage()
 
 		if wantl, l := chunkCount*chunkSize, count; wantl != l {
 			t.Fatalf("expect %d events be persisted, got %d", wantl, l)
@@ -264,7 +265,7 @@ func TestEventMaintainer_ConcatChunks(t *testing.T) {
 			cfg.StreamLatest = true
 		})
 		latestChunkSize := 50
-		if err := streamer.(event.Persister).Persist(ctx, gstmID,
+		if err := streamer.(interevent.Persister).Persist(ctx, gstmID,
 			event.Envelop(ctx, gstmID, testutil.GenEvts(latestChunkSize), func(env event.RWEnvelope) {
 				env.SetGlobalVersion(gver)
 				gver = gver.Incr()
@@ -280,7 +281,7 @@ func TestEventMaintainer_ConcatChunks(t *testing.T) {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 
-		testutil.PrintMemUsage()
+		// testutil.PrintMemUsage()
 
 		if wantl, l := chunkCount*chunkSize+latestChunkSize, count; wantl != l {
 			t.Fatalf("expect %d events be persisted, got %d", wantl, l)

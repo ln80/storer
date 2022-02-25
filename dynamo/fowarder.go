@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/redaLaanait/storer/event"
+	interevent "github.com/redaLaanait/storer/internal/event"
 )
 
 type Forwarder interface {
@@ -14,11 +15,11 @@ type forwarder struct {
 	svc        ClientAPI
 	table      string
 	serializer event.Serializer
-	persister  event.Persister
+	persister  interevent.Persister
 	publisher  event.Publisher
 }
 
-func NewForwarder(dbsvc ClientAPI, table string, per event.Persister, pub event.Publisher, ser event.Serializer) Forwarder {
+func NewForwarder(dbsvc ClientAPI, table string, per interevent.Persister, pub event.Publisher, ser event.Serializer) Forwarder {
 	return &forwarder{
 		svc:        dbsvc,
 		table:      table,

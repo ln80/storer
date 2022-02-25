@@ -68,7 +68,7 @@ func withBucket(t *testing.T, s3svc AdminAPI, tfn func(bucket string)) {
 func TestMain(m *testing.M) {
 	endpoint := os.Getenv("S3_ENDPOINT")
 	if endpoint == "" {
-		log.Fatal("s3 test endpoint not found")
+		log.Println("s3 test endpoint not found")
 		return
 	}
 

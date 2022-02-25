@@ -3,6 +3,8 @@ package dynamo
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -35,20 +37,20 @@ func streamIDsFrom(recs []Record) []string {
 	return ids
 }
 
-func recordHashKey(si event.StreamID, ps ...int) string {
+func recordHashKey(stmID event.StreamID, ps ...int) string {
 	page := 1
 	if len(ps) > 0 {
 		page = ps[0]
 	}
-	return fmt.Sprintf("%s#%d", si.GlobalID(), page)
+	return fmt.Sprintf("%s#%d", stmID.GlobalID(), page)
 }
 
-func recordRangeKeyWithTimestamp(t time.Time) string {
-	return fmt.Sprintf("t_%020d", t.UnixNano())
+func recordRangeKeyWithTimestamp(stmID event.StreamID, t time.Time) string {
+	return fmt.Sprintf("%st_%020d", strings.Join(stmID.Parts(), event.StreamIDPartsDelimiter), t.UnixNano())
 }
 
-func recordRangeKeyWithVersion(ver event.Version) string {
-	return fmt.Sprintf("v_%s", ver.Abs().String())
+func recordRangeKeyWithVersion(stmID event.StreamID, ver event.Version) string {
+	return fmt.Sprintf("%s@v_%s", strings.Join(stmID.Parts(), event.StreamIDPartsDelimiter), ver.Trunc().String())
 }
 
 var (
@@ -57,8 +59,7 @@ var (
 )
 
 type StoreConfig struct {
-	CheckPreviousRecord bool
-	serializer          event.Serializer
+	serializer event.Serializer
 }
 
 type store struct {
@@ -66,6 +67,9 @@ type store struct {
 	table string
 
 	*StoreConfig
+
+	mu         sync.RWMutex
+	checkpoint map[string]string
 }
 
 type StoreOption func(s *StoreConfig)
@@ -84,9 +88,10 @@ func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) inte
 		svc:   svc,
 		table: table,
 		StoreConfig: &StoreConfig{
-			serializer:          json.NewEventSerializer(""),
-			CheckPreviousRecord: true,
+			serializer: json.NewEventSerializer(""),
 		},
+
+		checkpoint: make(map[string]string),
 	}
 
 	for _, opt := range opts {
@@ -101,9 +106,9 @@ func (s *store) Append(ctx context.Context, id event.StreamID, evts ...event.Env
 	}
 	t := evts[len(evts)-1].At()
 	keysFn := func() (string, string) {
-		return recordHashKey(id), recordRangeKeyWithTimestamp(t)
+		return recordHashKey(id), recordRangeKeyWithTimestamp(id, t)
 	}
-	return s.save(ctx, id, nil, evts, keysFn)
+	return s.doAppend(ctx, id, nil, evts, keysFn)
 }
 
 func (s *store) Load(ctx context.Context, id event.StreamID, trange ...time.Time) ([]event.Envelope, error) {
@@ -117,15 +122,16 @@ func (s *store) Load(ctx context.Context, id event.StreamID, trange ...time.Time
 		since, until = time.Unix(0, 0), time.Now()
 	}
 
-	// record is sorted with the last chunk evt timestamp
+	// records are sorted by the last evt's timestamp
 	// chunk's time window should not exceed 10 sec
+	// TODO: enfore this invariant in Append method
 	if !since.Before(time.Unix(5, 0)) && !since.IsZero() {
 		msince = since.Add(-5 * time.Second)
 	}
 	muntil = until.Add(5 * time.Second)
-	envs, err := s.load(ctx, id,
-		recordRangeKeyWithTimestamp(msince),
-		recordRangeKeyWithTimestamp(muntil),
+	envs, err := s.doLoad(ctx, id,
+		recordRangeKeyWithTimestamp(id, msince),
+		recordRangeKeyWithTimestamp(id, muntil),
 	)
 	if err != nil {
 		return nil, err
@@ -141,25 +147,44 @@ func (s *store) Load(ctx context.Context, id event.StreamID, trange ...time.Time
 	return fenvs, nil
 }
 
-func (s *store) AppendToStream(ctx context.Context, stm sourcing.Stream) error {
+// AppendToStream implements sourcing.Store interface
+func (s *store) AppendToStream(ctx context.Context, stm sourcing.Stream) (err error) {
 	if stm.Empty() {
-		return nil
+		return
 	}
-	if err := stm.Validate(); err != nil {
-		return err
+	if err = stm.Validate(); err != nil {
+		return
 	}
+	// update the stream in-memory checkpoint if the new chunk is succesfully appended
+	defer func() {
+		if err == nil {
+			s.checkVersion(stm.ID(), stm.Version())
+		}
+	}()
+
 	id := stm.ID()
 	ver := stm.Version()
 	keysFn := func() (string, string) {
-		return recordHashKey(id), recordRangeKeyWithVersion(ver)
+		return recordHashKey(id), recordRangeKeyWithVersion(stm.ID(), ver)
 	}
-	return s.save(ctx, id, &ver, stm.Unwrap(), keysFn)
+	// "check previous record" + "save new chunk" op is not transactional, and we suppose the store table is immutable
+	// a dirty read may occur if table is somehow corrupted/updated during the append call
+	// we ignore "check previous record exists" if the chunk to append is supposed being the first in the stream
+	if ver.Trunc().After(event.VersionMin) {
+		if err = s.previousRecordExists(ctx, id, ver); err != nil {
+			return err
+		}
+	}
+	// doAppend still perform another check to ensure the chunk to append's version does not already exist
+	// although doAppend does not guarantees the previous record aka chunk exist
+	err = s.doAppend(ctx, id, &ver, stm.Unwrap(), keysFn)
+	return
 }
 
-func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...event.Version) (*sourcing.Stream, error) {
+// AppendToStream implements sourcing.Store interface
+func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...event.Version) (stm *sourcing.Stream, err error) {
 	var from, to event.Version
-	l := len(vrange)
-	if l > 1 {
+	if l := len(vrange); l > 1 {
 		from, to = vrange[0], vrange[1]
 	} else if l == 1 {
 		from, to = vrange[0], event.VersionMax
@@ -167,8 +192,17 @@ func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...eve
 		from, to = event.VersionMin, event.VersionMax
 	}
 
-	envs, err := s.load(ctx, id, recordRangeKeyWithVersion(from),
-		recordRangeKeyWithVersion(to))
+	// update the stream memory checkpoint if last records of the stream are successfully loaded
+	if to == event.VersionMax {
+		defer func() {
+			if err == nil {
+				s.checkVersion(stm.ID(), stm.Version())
+			}
+		}()
+	}
+
+	envs, err := s.doLoad(ctx, id, recordRangeKeyWithVersion(id, from),
+		recordRangeKeyWithVersion(id, to))
 	if err != nil {
 		return nil, err
 	}
@@ -181,31 +215,89 @@ func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...eve
 		fenvs = append(fenvs, env)
 	}
 
-	return sourcing.NewStream(
+	stm = sourcing.NewStream(
 		id, fenvs,
-	), nil
+	)
+	return
 }
 
-// checkPreviousRecordExists verifies the existence of the previous versionned record
-// note that the check is not transactional, and suppose the store table is immutable
-// a dirty read may occur if table is somehow corrupted
-func (s *store) checkPreviousRecordExists(ctx context.Context, id event.StreamID, ver event.Version) error {
-	prever := ver.Decr()
-	out, err := s.svc.GetItem(ctx, &dynamodb.GetItemInput{
-		TableName: aws.String(s.table),
-		Key: map[string]types.AttributeValue{
-			HashKey:  &types.AttributeValueMemberS{Value: recordHashKey(id)},
-			RangeKey: &types.AttributeValueMemberS{Value: recordRangeKeyWithVersion(prever)},
-		},
-		ConsistentRead: aws.Bool(true),
-	})
-	if err != nil || len(out.Item) == 0 {
-		return event.Err(event.ErrAppendEventsFailed, id.String(), "previous record not found ver: %v", prever)
+// checkVersion set the given version as the current one the stream in a memory cache
+func (s *store) checkVersion(id event.StreamID, ver event.Version) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.checkpoint[id.String()] = ver.String()
+}
+
+// lastCheckedVersion returns the given stream current version from the memory cache if it exists.
+func (s *store) lastCheckedVersion(id event.StreamID) (ver string, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ver, ok = s.checkpoint[id.String()]
+	return
+}
+
+// previousRecordExists ensures the given stream chunks are in sequence in case of a version-based stream.
+// It also maintains/refresh the in-memory checkpoint of the given stream.
+func (s *store) previousRecordExists(ctx context.Context, id event.StreamID, verToAppend event.Version) error {
+	// previous version should be equals to current stream version (without fractional part)
+	prever := verToAppend.Decr()
+	cacheUpdated := false
+
+CHECK_PREVIOUS_RECORD:
+	// get current stream version from memory cache
+	lastver, ok := s.lastCheckedVersion(id)
+	if ok {
+		if prever.String() == lastver {
+			return nil
+		}
+
+		// coming to point where cache is refreshed but prev ver still ahead means the vertoAppend is not in sequence
+		if prever.String() < lastver || cacheUpdated {
+			return event.Err(event.ErrAppendEventsFailed, id.String(), "invalid chunk version, it must be next to previous record version: "+prever.String())
+		}
+	}
+
+	// invalidate the cache
+	if !ok || prever.String() > lastver {
+
+		// replace this query by
+		// query lmit =1 order desc
+		expr, err := expression.
+			NewBuilder().
+			WithProjection(expression.NamesList(
+				expression.Name("version"),
+			)).Build()
+		if err != nil {
+			return event.Err(event.ErrAppendEventsFailed, id.String(), err)
+		}
+		out, err := s.svc.GetItem(ctx, &dynamodb.GetItemInput{
+			TableName: aws.String(s.table),
+			Key: map[string]types.AttributeValue{
+				HashKey:  &types.AttributeValueMemberS{Value: recordHashKey(id)},
+				RangeKey: &types.AttributeValueMemberS{Value: recordRangeKeyWithVersion(id, prever)},
+			},
+			ConsistentRead:           aws.Bool(true),
+			ProjectionExpression:     expr.Projection(),
+			ExpressionAttributeNames: expr.Names(),
+		})
+		if err != nil || len(out.Item) == 0 {
+			return event.Err(event.ErrAppendEventsFailed, id.String(), "previous record not found of version: %v", prever)
+		}
+
+		s.checkVersion(id, prever)
+		cacheUpdated = true
+
+		goto CHECK_PREVIOUS_RECORD
 	}
 	return nil
 }
 
-func (s *store) save(ctx context.Context, id event.StreamID, ver *event.Version, evts []event.Envelope, keysFn func() (string, string)) error {
+// doAppend works for both version and timestamp based streams.
+// It appends the given chunk of events to stream.
+// The ver parameter must be not nil in case of a version-based stream
+func (s *store) doAppend(ctx context.Context, id event.StreamID, ver *event.Version, evts []event.Envelope, keysFn func() (string, string)) error {
 	if len(evts) == 0 {
 		return nil
 	}
@@ -217,7 +309,7 @@ func (s *store) save(ctx context.Context, id event.StreamID, ver *event.Version,
 
 	b, err := s.serializer.MarshalEventBatch(evts)
 	if err != nil {
-		return event.Err(event.ErrAppendEventsFailed, id.String(), err.Error())
+		return event.Err(event.ErrAppendEventsFailed, id.String(), err)
 	}
 
 	hk, rk := keysFn()
@@ -233,16 +325,11 @@ func (s *store) save(ctx context.Context, id event.StreamID, ver *event.Version,
 
 	if ver != nil {
 		r.Version = ver.String()
-		if ver.After(event.VersionMin) && s.CheckPreviousRecord {
-			if err := s.checkPreviousRecordExists(ctx, id, *ver); err != nil {
-				return err
-			}
-		}
 	}
 
 	mr, err := attributevalue.MarshalMap(r)
 	if err != nil {
-		return event.Err(event.ErrAppendEventsFailed, id.String(), err.Error())
+		return event.Err(event.ErrAppendEventsFailed, id.String(), err)
 	}
 
 	expr, err := expression.
@@ -253,7 +340,7 @@ func (s *store) save(ctx context.Context, id event.StreamID, ver *event.Version,
 			),
 		).Build()
 	if err != nil {
-		return event.Err(event.ErrAppendEventsFailed, id.String(), err.Error())
+		return event.Err(event.ErrAppendEventsFailed, id.String(), err)
 	}
 
 	if err = ses.Put(ctx, &dynamodb.PutItemInput{
@@ -264,15 +351,15 @@ func (s *store) save(ctx context.Context, id event.StreamID, ver *event.Version,
 		ExpressionAttributeValues: expr.Values(),
 	}); err != nil {
 		if IsConditionCheckFailure(err) {
-			return event.Err(event.ErrAppendEventsConflict, id.String(), err.Error())
+			return event.Err(event.ErrAppendEventsConflict, id.String(), err)
 		}
-		return event.Err(event.ErrAppendEventsFailed, id.String(), err.Error())
+		return event.Err(event.ErrAppendEventsFailed, id.String(), err)
 	}
 
 	return nil
 }
 
-func (s *store) load(ctx context.Context, id event.StreamID, from, to string) ([]event.Envelope, error) {
+func (s *store) doLoad(ctx context.Context, id event.StreamID, from, to string) ([]event.Envelope, error) {
 	expr, err := expression.
 		NewBuilder().
 		WithKeyCondition(
@@ -283,7 +370,7 @@ func (s *store) load(ctx context.Context, id event.StreamID, from, to string) ([
 					Between(expression.Value(from), expression.Value(to))),
 		).Build()
 	if err != nil {
-		return nil, event.Err(event.ErrLoadEventFailed, id.String(), err.Error())
+		return nil, event.Err(event.ErrLoadEventFailed, id.String(), err)
 	}
 
 	p := dynamodb.NewQueryPaginator(s.svc, &dynamodb.QueryInput{
@@ -297,12 +384,12 @@ func (s *store) load(ctx context.Context, id event.StreamID, from, to string) ([
 	for p.HasMorePages() {
 		out, err := p.NextPage(ctx)
 		if err != nil {
-			return nil, event.Err(event.ErrLoadEventFailed, id.String(), err.Error())
+			return nil, event.Err(event.ErrLoadEventFailed, id.String(), err)
 		}
 		precs := []Record{}
 		err = attributevalue.UnmarshalListOfMaps(out.Items, &precs)
 		if err != nil {
-			return nil, event.Err(event.ErrLoadEventFailed, id.String(), err.Error())
+			return nil, event.Err(event.ErrLoadEventFailed, id.String(), err)
 		}
 		records = append(records, precs...)
 	}
@@ -311,7 +398,7 @@ func (s *store) load(ctx context.Context, id event.StreamID, from, to string) ([
 	for _, r := range records {
 		chunk, err := s.serializer.UnmarshalEventBatch(r.Events)
 		if err != nil {
-			return nil, event.Err(event.ErrLoadEventFailed, id.String(), err.Error())
+			return nil, event.Err(event.ErrLoadEventFailed, id.String(), err)
 		}
 		envs = append(envs, chunk...)
 	}

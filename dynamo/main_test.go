@@ -58,7 +58,7 @@ func withTable(t *testing.T, dbsvc AdminAPI, tfn func(table string)) {
 func TestMain(m *testing.M) {
 	endpoint := os.Getenv("DYNAMODB_ENDPOINT")
 	if endpoint == "" {
-		log.Fatal("dynamodb test endpoint not found")
+		log.Println("dynamodb test endpoint not found")
 		return
 	}
 

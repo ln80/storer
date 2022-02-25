@@ -27,8 +27,6 @@ func TestEventSourcingStore(t *testing.T) {
 	ctx := context.Background()
 
 	withTable(t, dbsvc, func(table string) {
-		testutil.EventSourcingStoreTest(t, ctx, NewEventStore(dbsvc, table, func(sc *StoreConfig) {
-			sc.CheckPreviousRecord = true
-		}))
+		testutil.EventSourcingStoreTest(t, ctx, NewEventStore(dbsvc, table))
 	})
 }

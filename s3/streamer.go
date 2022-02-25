@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/redaLaanait/storer/event"
+	interevent "github.com/redaLaanait/storer/internal/event"
 	"github.com/redaLaanait/storer/json"
 	"golang.org/x/sync/errgroup"
 )
@@ -30,11 +31,11 @@ const (
 )
 
 var (
-	ErrStreamInvalidObjectKey   = errors.New("invalid stream object key")
-	ErrStreamInvalidRangeKeys   = errors.New("invalid stream range keys")
-	ErrStreamListObjectFailed   = errors.New("list stream object failed")
-	ErrStreamConcatChunksFailed = errors.New("merge stream chunks failed")
-	ErrStreamLoadChunksFailed   = errors.New("load stream chunks failed")
+	ErrStreamInvalidObjectKey  = errors.New("invalid stream object key")
+	ErrStreamInvalidRangeKeys  = errors.New("invalid stream range keys")
+	ErrStreamListObjectFailed  = errors.New("list stream object failed")
+	ErrStreamMergeChunksFailed = errors.New("merge stream chunks failed")
+	ErrStreamLoadChunksFailed  = errors.New("load stream chunks failed")
 )
 
 var objectKeyReg = regexp.MustCompile(
@@ -111,7 +112,7 @@ func concatRangeKey(mroot, from, to string) (key string, err error) {
 	return
 }
 
-func prepareObjectQuery(provider string, filter event.StreamFilter) (query string) {
+func makeObjectQuery(provider string, filter event.StreamFilter) (query string) {
 	// Hack: seems that Minio and S3 SQL are not compatible
 	query = `SELECT * from`
 	if provider == ProviderMinio {
@@ -132,13 +133,17 @@ func prepareObjectQuery(provider string, filter event.StreamFilter) (query strin
 }
 
 type StreamMaintainer interface {
-	ConcatChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error
+	MergeChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error
 }
 
+// type Persister interface {
+// 	Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error
+// }
+
 var (
-	_ event.Persister  = &eventStreamer{}
-	_ event.Streamer   = &eventStreamer{}
-	_ StreamMaintainer = &eventStreamer{}
+	_ interevent.Persister = &eventStreamer{}
+	_ event.Streamer       = &eventStreamer{}
+	_ StreamMaintainer     = &eventStreamer{}
 )
 
 type eventStreamer struct {
@@ -156,7 +161,7 @@ type StreamerConfig struct {
 	Provider     string
 }
 
-func NewEventPersister(svc ClientAPI, bucket string, ser event.Serializer) event.Persister {
+func NewEventPersister(svc ClientAPI, bucket string, ser event.Serializer) interevent.Persister {
 	return &eventStreamer{
 		bucket:     bucket,
 		svc:        svc,
@@ -265,9 +270,9 @@ func (s *eventStreamer) listObject(ctx context.Context, stmID, root string, f ev
 		StartAfter: aws.String(minKey),
 	}
 
-	paginator := s3.NewListObjectsV2Paginator(s.svc, params)
-	for loop := true; loop && paginator.HasMorePages(); {
-		out, err := paginator.NextPage(context.TODO())
+	p := s3.NewListObjectsV2Paginator(s.svc, params)
+	for loop := true; loop && p.HasMorePages(); {
+		out, err := p.NextPage(ctx)
 		if err != nil {
 			return nil, event.Err(ErrStreamListObjectFailed, stmID, err.Error())
 		}
@@ -296,8 +301,8 @@ type queryRequest struct {
 	result chan event.Envelope
 }
 
-func (s *eventStreamer) ConcatChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error {
-	keys, err := s.listObject(ctx, stmID.Parts()[0], FolderChunks, f)
+func (s *eventStreamer) MergeChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error {
+	keys, err := s.listObject(ctx, stmID.GlobalID(), FolderChunks, f)
 	if err != nil {
 		return err
 	}
@@ -310,7 +315,7 @@ func (s *eventStreamer) ConcatChunks(ctx context.Context, stmID event.StreamID, 
 	}
 
 	inst, ctx := s.newInstance(ctx)
-	inst.runConcatChunks(ctx, stmID.String(), mkey, len(keys),
+	inst.runMergeChunks(ctx, stmID.String(), mkey, len(keys),
 		inst.runLoadChunks(ctx, stmID, keys),
 	)
 
@@ -378,7 +383,7 @@ func resumeFromChunks(f event.StreamFilter, keys []string) (event.StreamFilter, 
 func (s *eventStreamer) Replay(ctx context.Context, id event.StreamID, f event.StreamFilter, h event.StreamHandler) error {
 	f.Build()
 
-	partkeys, err := s.listObject(ctx, id.Parts()[0], FolderPartitions, f)
+	partkeys, err := s.listObject(ctx, id.GlobalID(), FolderPartitions, f)
 	if err != nil {
 		return err
 	}
@@ -392,7 +397,7 @@ func (s *eventStreamer) Replay(ctx context.Context, id event.StreamID, f event.S
 		if err != nil {
 			return err
 		}
-		chunkeys, err = s.listObject(ctx, id.Parts()[0], FolderChunks, chunkf)
+		chunkeys, err = s.listObject(ctx, id.GlobalID(), FolderChunks, chunkf)
 		if err != nil {
 			return err
 		}
@@ -603,7 +608,7 @@ func (s *streamInstance) runQueryObjects(ctx context.Context, keys []string, f e
 				if !ok {
 					break
 				}
-				if err := s.queryObject(ctx, prepareObjectQuery(s.Provider, f), req.key, req.result); err != nil {
+				if err := s.queryObject(ctx, makeObjectQuery(s.Provider, f), req.key, req.result); err != nil {
 					return s.setErr(err)
 				}
 			}
@@ -669,7 +674,7 @@ func (s *streamInstance) process(ctx context.Context, envCh chan event.Envelope,
 	}
 }
 
-func (s *streamInstance) runConcatChunks(ctx context.Context, stmID string, destkey string, count int, chunks chan []byte) {
+func (s *streamInstance) runMergeChunks(ctx context.Context, stmID string, destkey string, count int, chunks chan []byte) {
 	r, w := io.Pipe()
 
 	s.g.Go(func() error {
@@ -681,7 +686,7 @@ func (s *streamInstance) runConcatChunks(ctx context.Context, stmID string, dest
 			_, err = w.Write(b)
 			return
 		}); err != nil {
-			s.setErr(event.Err(ErrStreamConcatChunksFailed, stmID, err))
+			s.setErr(event.Err(ErrStreamMergeChunksFailed, stmID, err))
 		}
 		return nil
 	})
@@ -699,7 +704,7 @@ func (s *streamInstance) runConcatChunks(ctx context.Context, stmID string, dest
 			Body:        r,
 			ContentType: aws.String(s.serializer.ContentType()),
 		}); err != nil {
-			return event.Err(ErrStreamConcatChunksFailed, stmID, err)
+			return event.Err(ErrStreamMergeChunksFailed, stmID, err)
 		}
 
 		return nil
