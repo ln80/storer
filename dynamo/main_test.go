@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/redaLaanait/storer/event"
 	"github.com/redaLaanait/storer/internal/testutil"
@@ -25,18 +27,18 @@ func genTableName(prefix string) string {
 	return prefix + "-" + now + "-" + random
 }
 
-// func awsConfig(endpoint string) (cfg aws.Config, err error) {
-// 	cfg, err = config.LoadDefaultConfig(
-// 		context.Background(),
-// 		config.WithRegion(""),
-// 		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-// 			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-// 				return aws.Endpoint{URL: endpoint}, nil
-// 			})),
-// 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TEST", "TEST", "TEST")),
-// 	)
-// 	return
-// }
+func awsConfig(endpoint string) (cfg aws.Config, err error) {
+	cfg, err = config.LoadDefaultConfig(
+		context.Background(),
+		config.WithRegion(""),
+		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
+			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+				return aws.Endpoint{URL: endpoint}, nil
+			})),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TEST", "TEST", "TEST")),
+	)
+	return
+}
 
 func withTable(t *testing.T, dbsvc AdminAPI, tfn func(table string)) {
 	ctx := context.Background()
@@ -62,8 +64,7 @@ func TestMain(m *testing.M) {
 		return
 	}
 
-	// cfg, err := awsConfig(endpoint)
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	cfg, err := awsConfig(endpoint)
 	if err != nil {
 		log.Fatal(err)
 		return
