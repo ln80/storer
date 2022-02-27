@@ -25,7 +25,6 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         volumes:
           - ${{ github.workspace }}/data:/data
-        # options: --name=minio --health-cmd "curl http://localhost:8071/minio/health/live"
         options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
       
     steps:
@@ -38,9 +37,9 @@ jobs:
         with:
           go-version: 1.17
 
-      - name: cd
+      - name: set current dir
         run: |
-          cd ./repository
+          cd ./repository && ls -l
       - name: run unit & func tests
         run: |
           make test
