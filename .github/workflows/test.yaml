@@ -1,0 +1,44 @@
+name: Test
+
+on:
+  push:
+    branches: [init]
+  pull_request:
+    branches: [init]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local
+        ports:
+          - 8070:8000
+
+      minio:
+        image: minio/minio:edge-cicd
+        ports:
+          - 8071:9000
+        env:
+          MINIO_ACCESS_KEY: minioadmin
+          MINIO_SECRET_KEY: minioadmin
+        volumes:
+          - ${{ github.workspace }}/data:/data
+        options: --name=minio --health-cmd "curl http://localhost:8071/minio/health/live"
+      
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+
+      - name: run unit & func tests
+        shell: bash
+        run: |
+          make test
+        env: 
+          DYNAMODB_ENDPOINT: http://localhost:8070
+          S3_ENDPOINT: http://127.0.0.1:8071
+
