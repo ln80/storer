@@ -38,8 +38,12 @@ jobs:
         with:
           go-version: 1.17
 
+      - name: debug repo
+        # shell: shell
+        run: |
+          ls -l
       - name: run unit & func tests
-        shell: bash
+        # shell: shell
         run: |
           make test
         env: 
