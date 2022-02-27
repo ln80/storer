@@ -37,10 +37,11 @@ jobs:
         with:
           go-version: 1.17
 
-      - name: set current dir
-        run: |
-          cd ./repository && ls -l && cat Makefile
+      # - name: set current dir
+      #   run: |
+      #     cd ./repository && ls -l && cat Makefile
       - name: run unit & func tests
+        working-directory: ./repository
         run: |
           make test
         env: 
