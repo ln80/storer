@@ -39,7 +39,7 @@ jobs:
 
       - name: set current dir
         run: |
-          cd ./repository && ls -l
+          cd ./repository && ls -l && cat Makefile
       - name: run unit & func tests
         run: |
           make test

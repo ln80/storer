@@ -24,5 +24,6 @@ test-examples:
 
 # test: export DYNAMODB_ENDPOINT = http://localhost:8070
 # test: export S3_ENDPOINT = http://127.0.0.1:8071
+.PHONY: test
 test:
 	go test -race -cover ./...
