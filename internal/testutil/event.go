@@ -3,7 +3,6 @@ package testutil
 import (
 	"fmt"
 	"reflect"
-	"runtime"
 	"strconv"
 
 	"github.com/redaLaanait/storer/event"
@@ -61,16 +60,16 @@ func CmpEnv(env1, env2 event.Envelope) bool {
 		reflect.DeepEqual(env1.Event(), env2.Event())
 }
 
-func PrintMemUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
-	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
-	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
-	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
-	fmt.Printf("\tNumGC = %v\n", m.NumGC)
-}
+// func PrintMemUsage() {
+// 	var m runtime.MemStats
+// 	runtime.ReadMemStats(&m)
+// 	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
+// 	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+// 	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+// 	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+// 	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+// }
 
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
-}
+// func bToMb(b uint64) uint64 {
+// 	return b / 1024 / 1024
+// }

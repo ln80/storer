@@ -1,4 +1,4 @@
-name: Test
+name: Test Storer event store
 
 on:
   push:
@@ -9,13 +9,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-
+    name: Test Storer go packages 
     services:
       dynamodb:
         image: amazon/dynamodb-local
         ports:
           - 8070:8000
-
       minio:
         image: minio/minio:edge-cicd
         ports:
@@ -24,27 +23,24 @@ jobs:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
         volumes:
-          - ${{ github.workspace }}/data:/data
+          - ${{ github.workspace }}/minio:/minio
         options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
       
     steps:
       - uses: actions/checkout@v2
         with:
-          path: 'repository'
+          path: 'source'
 
-      - name: Set up Go
+      - name: Setup Go
         uses: actions/setup-go@v2
         with:
           go-version: 1.17
 
-      # - name: set current dir
-      #   run: |
-      #     cd ./repository && ls -l && cat Makefile
-      - name: run unit & func tests
-        working-directory: ./repository
+      - name: Run Unit & Functional tests
+        working-directory: ./source
         run: |
           make test
         env: 
           DYNAMODB_ENDPOINT: http://localhost:8070
-          S3_ENDPOINT: http://127.0.0.1:8071
+          S3_ENDPOINT: http://localhost:8071
 

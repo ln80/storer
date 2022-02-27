@@ -16,22 +16,6 @@ import (
 
 var s3svc AdminAPI
 
-func realawsConfig(endpoint string) (cfg aws.Config, err error) {
-	cfg, err = config.LoadDefaultConfig(
-		context.Background(),
-		config.WithRegion("eu-west-1"),
-		// config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-		// 	func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		// 		return aws.Endpoint{
-		// 			URL:               endpoint,
-		// 			HostnameImmutable: true,
-		// 		}, nil
-		// 	})),
-		// config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("minioadmin", "minioadmin", "")),
-	)
-	return
-}
-
 func awsConfig(endpoint string) (cfg aws.Config, err error) {
 	cfg, err = config.LoadDefaultConfig(
 		context.Background(),
@@ -51,7 +35,7 @@ func awsConfig(endpoint string) (cfg aws.Config, err error) {
 func withBucket(t *testing.T, s3svc AdminAPI, tfn func(bucket string)) {
 	ctx := context.Background()
 
-	bucket := "todo-randomize"
+	bucket := "test-bucket"
 	if err := CreateBucket(ctx, s3svc, bucket); err != nil {
 		t.Fatalf("failed to create test event bucket: %v", err)
 	}
