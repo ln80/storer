@@ -22,8 +22,8 @@ jobs:
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
-        volumes:
-          - ${{ github.workspace }}/minio:/minio
+        # volumes:
+        #   - ${{ github.workspace }}/minio:/data
         options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
       
     steps:
