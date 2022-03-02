@@ -7,15 +7,19 @@ import (
 
 type eventToPub1 struct{ Val string }
 
-func (evt *eventToPub1) Dests() []string {
+func (evt *eventToPub1) EvDests() []string {
 	return []string{"dest1"}
 }
 
 type eventToPub2 struct{ Val string }
 
-func (evt *eventToPub2) Dests() []string {
+func (evt *eventToPub2) EvDests() []string {
 	return []string{"dest2", "dest3"}
 }
+
+var _ Publishable = &eventToPub1{}
+var _ Publishable = &eventToPub2{}
+
 func TestPublisher_RouteEvents(t *testing.T) {
 	evts := []interface{}{
 		&eventToPub1{},

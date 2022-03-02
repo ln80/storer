@@ -19,9 +19,11 @@ type Event2 struct {
 	Val string
 }
 
-func (e *Event2) Dests() []string {
+func (e *Event2) EvDests() []string {
 	return []string{Dest2}
 }
+
+var _ event.Publishable = &Event2{}
 
 func GenEvts(count int) []interface{} {
 	evts := make([]interface{}, count)

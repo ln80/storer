@@ -63,6 +63,7 @@ func TestEventForwarder(t *testing.T) {
 
 	ser := json.NewEventSerializer("")
 
+	// event.NewRegister("")
 	withTable(t, dbsvc, func(table string) {
 		t.Run("test forward invalid record case 1", func(t *testing.T) {
 			gstmID := event.UID().String()
@@ -266,7 +267,7 @@ func TestEventForwarder(t *testing.T) {
 			if wantver, v := event.NewVersion().Add(3, 0), per.traces[gstmID][len(per.traces[gstmID])-1].GlobalVersion(); !wantver.Equal(v) {
 				t.Fatalf("expect vesions be equals, got: %v, %v", wantver, v)
 			}
-			if wantl, l := 1, len(pub.traces[(&testutil.Event2{}).Dests()[0]]); wantl != l {
+			if wantl, l := 1, len(pub.traces[(&testutil.Event2{}).EvDests()[0]]); wantl != l {
 				t.Fatalf("expect %d events be published, got %d", wantl, l)
 			}
 
@@ -285,7 +286,7 @@ func TestEventForwarder(t *testing.T) {
 			if wantl, l := 0, len(per.traces[gstmID]); wantl != l {
 				t.Fatalf("expect %d events be persisted, got %d", wantl, l)
 			}
-			if wantl, l := 0, len(pub.traces[(&testutil.Event2{}).Dests()[0]]); wantl != l {
+			if wantl, l := 0, len(pub.traces[(&testutil.Event2{}).EvDests()[0]]); wantl != l {
 				t.Fatalf("expect %d events be published, got %d", wantl, l)
 			}
 		})
