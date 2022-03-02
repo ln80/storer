@@ -134,14 +134,14 @@ func TestEventForwarder(t *testing.T) {
 			}
 		})
 
-		t.Run("test forward invalid record case 3", func(t *testing.T) {
+		t.Run("test forward correctable invalid record", func(t *testing.T) {
 			gstmID := event.UID().String()
 
 			fwd := NewForwarder(dbsvc, table, &persisterMock{}, &publisherMock{}, ser)
 
 			evtAt := time.Now()
-			nokEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
-				nil,
+			okEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
+				nil, // this entry must be escaped by Envelop func
 				&testutil.Event1{
 					Val: "test content 2",
 				},
@@ -153,9 +153,8 @@ func TestEventForwarder(t *testing.T) {
 				evtAt = evtAt.Add(1 * time.Minute)
 			})
 
-			err := fwd.Forward(ctx, []Record{makeRecord(ser, gstmID, nokEnvs)})
-			if wantErr := event.ErrNotFoundInRegistry; !errors.Is(err, wantErr) {
-				t.Fatalf("expect err %v to occur, got %v", wantErr, err)
+			if err := fwd.Forward(ctx, []Record{makeRecord(ser, gstmID, okEnvs)}); err != nil {
+				t.Fatalf("expect err be nil, got %v", err)
 			}
 		})
 
