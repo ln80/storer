@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/redaLaanait/storer/event/testutil"
 )
 
 func TestStreamID(t *testing.T) {
@@ -59,13 +61,12 @@ func TestStreamFilter(t *testing.T) {
 }
 
 func TestStreamValidation(t *testing.T) {
-	type Event struct{ Val string }
 
 	evts := []interface{}{
-		&Event{
+		&testutil.Event{
 			Val: "1",
 		},
-		&Event{
+		&testutil.Event{
 			Val: "2",
 		},
 	}
@@ -148,14 +149,11 @@ func TestStreamValidation(t *testing.T) {
 }
 
 func TestStreamState(t *testing.T) {
-
-	type Event struct{ Val string }
-
 	evts := []interface{}{
-		&Event{
+		&testutil.Event{
 			Val: "1",
 		},
-		&Event{
+		&testutil.Event{
 			Val: "2",
 		},
 	}

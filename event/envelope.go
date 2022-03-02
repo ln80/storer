@@ -11,12 +11,12 @@ type Envelope interface {
 	Type() string
 	Event() interface{}
 	At() time.Time
-
 	StreamID() string
 	Version() Version
 	GlobalStreamID() string
 	GlobalVersion() Version
 	User() string
+	Dests() []string
 }
 
 type RWEnvelope interface {
@@ -26,6 +26,7 @@ type RWEnvelope interface {
 	SetUser(userID string) Envelope
 	SetVersion(v Version) Envelope
 	SetGlobalVersion(v Version) Envelope
+	SetDests(dests []string) Envelope
 }
 
 type EnvelopeOption func(env RWEnvelope)
@@ -44,13 +45,15 @@ func WithVersionIncr(startingVer Version, diff VersionSequenceDiff) EnvelopeOpti
 	}
 }
 
-// Envelop wraps with options the given events
-// by default:
-// 		it creates a valid timestamp-based stream chunk
-//		it does not set event's version aka sequence
+// Envelop wraps (with options) the given events.
+// By default it creates a valid timestamp-based stream chunk,
+// and it does not set event versions
 func Envelop(ctx context.Context, stmID StreamID, evts []interface{}, opts ...EnvelopeOption) []Envelope {
-	envs := make([]Envelope, len(evts))
-	for i, evt := range evts {
+	envs := make([]Envelope, 0)
+	for _, evt := range evts {
+		if evt == nil {
+			continue
+		}
 		env := &envelope{
 			globalStreamID: stmID.GlobalID(),
 			streamID:       stmID.String(),
@@ -58,15 +61,19 @@ func Envelop(ctx context.Context, stmID StreamID, evts []interface{}, opts ...En
 			eType:          TypeOfWithContext(ctx, evt),
 			eID:            UID().String(),
 			at:             time.Now().UTC(),
+			dests:          eventDests(ctx, evt),
 		}
 		if ctx.Value(ContextUserKey) != nil {
 			user := ctx.Value(ContextUserKey).(string)
 			env.SetUser(user)
 		}
 		for _, opt := range opts {
+			if opt == nil {
+				continue
+			}
 			opt(env)
 		}
-		envs[i] = env
+		envs = append(envs, env)
 	}
 	return envs
 }
@@ -81,6 +88,7 @@ type envelope struct {
 	user           string
 	globalStreamID string
 	globalVersion  Version
+	dests          []string
 }
 
 var _ Envelope = &envelope{}
@@ -131,6 +139,11 @@ func (e *envelope) GlobalVersion() Version {
 	return e.globalVersion
 }
 
+// Dests implements the Dests method of the Envelop interface
+func (e *envelope) Dests() []string {
+	return e.dests
+}
+
 // SetAt implements the SetAt method of the RWEnvelope interface.
 func (e *envelope) SetAt(t time.Time) Envelope {
 	e.at = t
@@ -152,5 +165,11 @@ func (e *envelope) SetVersion(v Version) Envelope {
 // SetGlobalVersion implements the SetGlobalVersion method of the RWEnvelope interface.
 func (e *envelope) SetGlobalVersion(v Version) Envelope {
 	e.globalVersion = v
+	return e
+}
+
+// SetDests implements the SetDests method of the RWEnvelop interface
+func (e *envelope) SetDests(dests []string) Envelope {
+	e.dests = dests
 	return e
 }

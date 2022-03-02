@@ -3,15 +3,14 @@ package event
 import (
 	"context"
 	"testing"
+
+	"github.com/redaLaanait/storer/event/testutil"
 )
 
 func TestTypeOf(t *testing.T) {
-
-	type Event struct{ Val string }
-
 	t.Run("test TypeOf", func(t *testing.T) {
-		wantT := "event.Event"
-		t1, t2 := TypeOf(Event{}), TypeOf(&Event{})
+		wantT := "testutil.Event"
+		t1, t2 := TypeOf(testutil.Event{}), TypeOf(&testutil.Event{})
 		if t1 != t2 {
 			t.Fatalf("expect %s, %s be equals", t1, t2)
 		}
@@ -23,8 +22,8 @@ func TestTypeOf(t *testing.T) {
 	t.Run("test TypeOfWithContext", func(t *testing.T) {
 		ctx := context.Background()
 
-		wantT := "event.Event"
-		t1, t2 := TypeOfWithContext(ctx, Event{}), TypeOfWithContext(ctx, &Event{})
+		wantT := "testutil.Event"
+		t1, t2 := TypeOfWithContext(ctx, testutil.Event{}), TypeOfWithContext(ctx, &testutil.Event{})
 		if t1 != t2 {
 			t.Fatalf("expect %s, %s be equals", t1, t2)
 		}
@@ -35,7 +34,7 @@ func TestTypeOf(t *testing.T) {
 		namespace := "test"
 		ctx = context.WithValue(ctx, ContextNamespaceKey, namespace)
 		wantT = namespace + ".Event"
-		t1, t2 = TypeOfWithContext(ctx, Event{}), TypeOfWithContext(ctx, &Event{})
+		t1, t2 = TypeOfWithContext(ctx, testutil.Event{}), TypeOfWithContext(ctx, &testutil.Event{})
 		if t1 != t2 {
 			t.Fatalf("expect %s, %s be equals", t1, t2)
 		}

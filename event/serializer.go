@@ -2,6 +2,7 @@ package event
 
 import (
 	"context"
+	"errors"
 	"io"
 )
 
@@ -12,6 +13,12 @@ const (
 	EventFormatCSV     = EventFormat("CSV")     // not yet supported
 	EventFormatParquet = EventFormat("PARQUET") // not yet supported
 	EventFormatPBuffer = EventFormat("PBuffer") // not yet supported
+)
+
+var (
+	ErrMarshalEventFailed   = errors.New("marshal event(s) failed")
+	ErrMarshalEmptyEvent    = errors.New("event to marshal is empty")
+	ErrUnmarshalEventFailed = errors.New("unmarshal event(s) failed")
 )
 
 // Serializer provides a standard encoding/decoding interface for events chunks

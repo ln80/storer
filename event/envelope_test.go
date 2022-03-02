@@ -4,13 +4,11 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/redaLaanait/storer/event/testutil"
 )
 
 func TestEnvelope(t *testing.T) {
-
-	type Event struct{ Val string }
-	type Event2 struct{ Val string }
-
 	ctx := context.Background()
 
 	gstmID := "tenantID"
@@ -18,10 +16,10 @@ func TestEnvelope(t *testing.T) {
 
 	t.Run("test envelop event", func(t *testing.T) {
 		evts := []interface{}{
-			&Event{
+			&testutil.Event{
 				Val: "1",
 			},
-			&Event2{
+			&testutil.Event2{
 				Val: "2",
 			},
 		}
@@ -46,11 +44,11 @@ func TestEnvelope(t *testing.T) {
 				t.Fatalf("expect %v, %v be equals", want, val)
 			}
 			if i%2 == 0 {
-				if want, val := TypeOf(Event{}), env.Type(); want != val {
+				if want, val := TypeOf(testutil.Event{}), env.Type(); want != val {
 					t.Fatalf("expect %v, %v be equals", want, val)
 				}
 			} else {
-				if want, val := TypeOf(Event2{}), env.Type(); want != val {
+				if want, val := TypeOf(testutil.Event2{}), env.Type(); want != val {
 					t.Fatalf("expect %v, %v be equals", want, val)
 				}
 			}
@@ -70,10 +68,10 @@ func TestEnvelope(t *testing.T) {
 			ContextNamespaceKey, "foo")
 
 		evts := []interface{}{
-			&Event{
+			&testutil.Event{
 				Val: "1",
 			},
-			&Event2{
+			&testutil.Event2{
 				Val: "2",
 			},
 		}
@@ -83,11 +81,11 @@ func TestEnvelope(t *testing.T) {
 				t.Fatalf("expect %v, %v be equals", want, val)
 			}
 			if i%2 == 0 {
-				if want, val := TypeOfWithContext(ctx, Event{}), env.Type(); want != val {
+				if want, val := TypeOfWithContext(ctx, testutil.Event{}), env.Type(); want != val {
 					t.Fatalf("expect %v, %v be equals", want, val)
 				}
 			} else {
-				if want, val := TypeOfWithContext(ctx, Event2{}), env.Type(); want != val {
+				if want, val := TypeOfWithContext(ctx, testutil.Event2{}), env.Type(); want != val {
 					t.Fatalf("expect %v, %v be equals", want, val)
 				}
 			}
@@ -96,10 +94,10 @@ func TestEnvelope(t *testing.T) {
 
 	t.Run("test envelop event with options", func(t *testing.T) {
 		evts := []interface{}{
-			&Event{
+			&testutil.Event{
 				Val: "1",
 			},
-			&Event2{
+			&testutil.Event2{
 				Val: "2",
 			},
 		}
@@ -134,11 +132,11 @@ func TestEnvelope(t *testing.T) {
 				t.Fatalf("expect %v, %v be equals", want, val)
 			}
 			if i%2 == 0 {
-				if want, val := TypeOf(Event{}), env.Type(); want != val {
+				if want, val := TypeOf(testutil.Event{}), env.Type(); want != val {
 					t.Fatalf("expect %v, %v be equals", want, val)
 				}
 			} else {
-				if want, val := TypeOf(Event2{}), env.Type(); want != val {
+				if want, val := TypeOf(testutil.Event2{}), env.Type(); want != val {
 					t.Fatalf("expect %v, %v be equals", want, val)
 				}
 			}
@@ -150,10 +148,10 @@ func TestEnvelope(t *testing.T) {
 
 	t.Run("test envelop event with version incr", func(t *testing.T) {
 		evts := []interface{}{
-			&Event{
+			&testutil.Event{
 				Val: "1",
 			},
-			&Event2{
+			&testutil.Event2{
 				Val: "2",
 			},
 		}

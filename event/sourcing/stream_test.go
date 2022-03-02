@@ -6,16 +6,15 @@ import (
 	"testing"
 
 	"github.com/redaLaanait/storer/event"
+	"github.com/redaLaanait/storer/event/testutil"
 )
 
 func TestStream(t *testing.T) {
 	ctx := context.Background()
 
-	type Event struct{ Val string }
-
 	evts := []interface{}{
-		&Event{Val: "1"},
-		&Event{Val: "2"},
+		&testutil.Event{Val: "1"},
+		&testutil.Event{Val: "2"},
 	}
 
 	stmID := event.NewStreamID("gstmID")

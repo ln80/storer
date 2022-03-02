@@ -16,7 +16,7 @@ type eventToPub2 struct{ Val string }
 func (evt *eventToPub2) Dests() []string {
 	return []string{"dest2", "dest3"}
 }
-func TestPublisher(t *testing.T) {
+func TestPublisher_RouteEvents(t *testing.T) {
 	evts := []interface{}{
 		&eventToPub1{},
 		&eventToPub1{},
