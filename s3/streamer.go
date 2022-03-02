@@ -572,6 +572,11 @@ func (s *streamInstance) runUnmarchalChunks(ctx context.Context, in chan []byte)
 					if s.getErr() != nil {
 						break
 					}
+					if env.Event() == nil {
+						s.setErr(event.Err(event.ErrInvalidStream, env.StreamID(),
+							"empty event data is streamed", "it's likely to be a lazily unmarshaling issue"))
+						break
+					}
 					out <- env
 				}
 			}
@@ -694,7 +699,6 @@ func (s *streamInstance) runMergeChunks(ctx context.Context, stmID string, destk
 	// seems that uploader requires read all body to perform upload
 	// see: https://github.com/aws/aws-sdk-go/issues/2228
 	s.g.Go(func() error {
-		// PrintMemUsage()
 		uploader := s3manager.NewUploader(s.svc, func(u *s3manager.Uploader) {
 			u.Concurrency = 1
 		})

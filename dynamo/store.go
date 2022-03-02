@@ -138,6 +138,10 @@ func (s *store) Load(ctx context.Context, id event.StreamID, trange ...time.Time
 	}
 	fenvs := make([]event.Envelope, 0)
 	for _, env := range envs {
+		if env.Event() == nil {
+			return nil, event.Err(event.ErrInvalidStream, id.String(),
+				"empty event data loaded from store", "it's likely to be a lazily unmarshaling issue")
+		}
 		if env.At().Before(since) || env.At().After(until) {
 			continue
 		}
@@ -209,6 +213,10 @@ func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...eve
 
 	fenvs := make([]event.Envelope, 0)
 	for _, env := range envs {
+		if env.Event() == nil {
+			return nil, event.Err(event.ErrInvalidStream, id.String(),
+				"empty event data loaded from store", "it's likely to be a lazily unmarshaling issue")
+		}
 		if env.Version().Before(from) || env.Version().After(to) {
 			continue
 		}

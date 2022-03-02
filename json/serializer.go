@@ -6,125 +6,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/redaLaanait/storer/event"
 )
 
-type Event struct {
-	FGlobalStreamID string        `json:"GStreamID"`
-	FGlobalVersion  string        `json:"GVersion"`
-	FStreamID       string        `json:"StreamID"`
-	FVersion        string        `json:"Version"`
-	fVersion        event.Version `json:"-"`
-
-	FID    string          `json:"ID"`
-	FType  string          `json:"Type"`
-	FRaw   json.RawMessage `json:"Data"`
-	fEvent interface{}     `json:"-"`
-	FAt    int64           `json:"At"`
-
-	fGlobalVersion event.Version `json:"-"`
-
-	FUser string `json:"User"`
-}
-
-var _ event.Envelope = &Event{}
-
-// var eventRegistry = event.NewRegister("")
-
-func (e *Event) StreamID() string {
-	return e.FStreamID
-}
-
-func (e *Event) ID() string {
-	return e.FID
-}
-
-func (e *Event) Type() string {
-	return e.FType
-}
-
-func (e *Event) Event() interface{} {
-	return e.fEvent
-}
-
-func (e *Event) SetEvent(evt interface{}) event.Envelope {
-	e.fEvent = evt
-
-	return e
-}
-
-func (e *Event) At() time.Time {
-	return time.Unix(0, e.FAt)
-}
-
-func (e *Event) SetAt(t time.Time) event.Envelope {
-	e.FAt = t.UnixNano()
-	return e
-}
-
-func (e *Event) Version() event.Version {
-	if !e.fVersion.IsZero() {
-		return e.fVersion
-	}
-	if e.FVersion != "" {
-		e.fVersion, _ = event.Ver(e.FVersion)
-	}
-	return e.fVersion
-}
-
-// func (e *Event) SetVersion(v event.Version) event.Envelope {
-// 	if v.IsZero() {
-// 		e.FVersion = ""
-// 	} else {
-// 		e.FVersion = v.String()
-// 	}
-
-// 	return e
-// }
-
-func (e *Event) User() string {
-	return e.FUser
-}
-
-// func (e *Event) SetUser(userID string) event.Envelope {
-// 	e.FUser = userID
-// 	return e
-// }
-
-func (e *Event) GlobalStreamID() string {
-	return e.FGlobalStreamID
-}
-
-// func (e *Event) SetGlobalStreamID(gstmID string) event.Envelope {
-// 	e.FGlobalStreamID = gstmID
-// 	return e
-// }
-
-func (e *Event) GlobalVersion() event.Version {
-	if !e.fGlobalVersion.IsZero() {
-		return e.fGlobalVersion
-	}
-	if e.FGlobalVersion != "" {
-		e.fGlobalVersion, _ = event.Ver(e.FGlobalVersion)
-	}
-	return e.fGlobalVersion
-}
-
-func (e *Event) SetGlobalVersion(v event.Version) event.Envelope {
-	e.fGlobalVersion = v
-	return e
-}
-
 type eventSerializer struct {
 	eventRegistry event.Register
 }
 
-func NewEventSerializer(context string) event.Serializer {
+func NewEventSerializer(namespace string) event.Serializer {
 	return &eventSerializer{
-		eventRegistry: event.NewRegister(context),
+		eventRegistry: event.NewRegister(namespace),
 	}
 }
 
@@ -142,86 +37,101 @@ func (s *eventSerializer) FileExt() string {
 	return "json"
 }
 
-func (s *eventSerializer) MarshalEvent(evt event.Envelope) ([]byte, error) {
-	data, err := json.Marshal(evt.Event())
-	if err != nil {
-		return nil, err
+func (s *eventSerializer) MarshalEvent(evt event.Envelope) (b []byte, err error) {
+	defer func() {
+		if err != nil {
+			err = event.Err(event.ErrMarshalEventFailed, evt.StreamID(), err)
+		}
+	}()
+	if evt == nil {
+		err = event.ErrMarshalEmptyEvent
+		return
 	}
-
-	// log.Println("debug marshal events", evt)
-	b, err := json.Marshal(Event{
-		FStreamID:       evt.StreamID(),
-		FID:             evt.ID(),
-		FType:           evt.Type(),
-		FRaw:            json.RawMessage(data),
-		FAt:             evt.At().UnixNano(),
-		FUser:           evt.User(),
-		FVersion:        evt.Version().String(),
-		FGlobalStreamID: evt.GlobalStreamID(),
-		FGlobalVersion:  evt.GlobalVersion().String(),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
-}
-
-func (s *eventSerializer) MarshalEventBatch(evts []event.Envelope) ([]byte, error) {
-	jsonEvts := make([]Event, len(evts))
-	for i, evt := range evts {
-		data, err := json.Marshal(evt.Event())
+	if jsonEvt, ok := evt.(*jsonEvent); ok {
+		b, err = json.Marshal(jsonEvt)
+	} else {
+		var data []byte
+		data, err = json.Marshal(evt.Event())
 		if err != nil {
 			return nil, err
 		}
-		jsonEvts[i] = Event{
-			FStreamID:       evt.StreamID(),
-			FID:             evt.ID(),
-			FType:           evt.Type(),
-			FRaw:            json.RawMessage(data),
-			FAt:             evt.At().UnixNano(),
-			FUser:           evt.User(),
-			FVersion:        evt.Version().String(),
-			FGlobalStreamID: evt.GlobalStreamID(),
-			FGlobalVersion:  evt.GlobalVersion().String(),
+		b, err = json.Marshal(jsonEvent{
+			FStreamID:         evt.StreamID(),
+			FID:               evt.ID(),
+			FType:             evt.Type(),
+			FRawEvent:         json.RawMessage(data),
+			FAt:               evt.At().UnixNano(),
+			FUser:             evt.User(),
+			FRawVersion:       evt.Version().String(),
+			FGlobalStreamID:   evt.GlobalStreamID(),
+			FRawGlobalVersion: evt.GlobalVersion().String(),
+			FDests:            evt.Dests(),
+		})
+	}
+	return
+}
+
+func (s *eventSerializer) MarshalEventBatch(evts []event.Envelope) (b []byte, err error) {
+	defer func() {
+		if err != nil {
+			if len(evts) > 0 {
+				err = event.Err(event.ErrMarshalEventFailed, evts[0].StreamID(), err)
+			} else {
+				err = event.Err(event.ErrMarshalEventFailed, "", err)
+			}
+		}
+	}()
+	jsonEvts := make([]jsonEvent, len(evts))
+	for i, evt := range evts {
+		if jsonEvt, ok := evt.(*jsonEvent); ok {
+			jsonEvts[i] = *jsonEvt
+		} else {
+			var data []byte
+			data, err = json.Marshal(evt.Event())
+			if err != nil {
+				return
+			}
+			jsonEvts[i] = jsonEvent{
+				FStreamID:         evt.StreamID(),
+				FID:               evt.ID(),
+				FType:             evt.Type(),
+				FRawEvent:         json.RawMessage(data),
+				FAt:               evt.At().UnixNano(),
+				FUser:             evt.User(),
+				FRawVersion:       evt.Version().String(),
+				FGlobalStreamID:   evt.GlobalStreamID(),
+				FRawGlobalVersion: evt.GlobalVersion().String(),
+				FDests:            evt.Dests(),
+			}
 		}
 	}
-
-	b, err := json.Marshal(jsonEvts)
-	if err != nil {
-		return nil, err
-	}
-
-	return b, nil
+	b, err = json.Marshal(jsonEvts)
+	return
 }
 
 func (s *eventSerializer) UnmarshalEvent(b []byte) (event.Envelope, error) {
-	jsonEv := Event{}
-	if err := json.Unmarshal(b, &jsonEv); err != nil {
+	jsonEvt := jsonEvent{
+		reg: s.eventRegistry,
+	}
+	if err := json.Unmarshal(b, &jsonEvt); err != nil {
+		return nil, err
+	}
+	return &jsonEvt, nil
+}
+
+func (s *eventSerializer) UnmarshalEventBatch(b []byte) ([]event.Envelope, error) {
+	jsonEvts := []jsonEvent{}
+	if err := json.Unmarshal(b, &jsonEvts); err != nil {
 		return nil, err
 	}
 
-	evt, err := s.eventRegistry.Get(jsonEv.Type())
-	if err != nil {
-		return nil, fmt.Errorf("resolve event type faild %w", err)
-		// panic(fmt.Errorf("unmarshal event faild %w", err))
+	envs := make([]event.Envelope, len(jsonEvts))
+	for i, jsonEvt := range jsonEvts {
+		jsonEvt := jsonEvt
+		jsonEvt.reg = s.eventRegistry
+		envs[i] = &jsonEvt
 	}
-	if err := json.Unmarshal(jsonEv.FRaw, evt); err != nil {
-		return nil, fmt.Errorf("unmarshal event faild %w", err)
-		// panic(fmt.Errorf("unmarshal event faild %w", err))
-	}
-
-	// return event.Envelop(context.Background(), event.NewStreamID(jsonEv.GlobalStreamID()), []interface{}{ev}, func(env event.Envelope) {
-	// 		env.
-	// 			SetAt(jsonEv.At())
-
-	// 	})[0],
-	// 	nil
-
-	jsonEv.SetEvent(evt)
-
-	return &jsonEv, nil
-
+	return envs, nil
 }
 
 func (s *eventSerializer) Decode(ctx context.Context, r io.Reader, ch chan<- event.Envelope) error {
@@ -231,7 +141,7 @@ func (s *eventSerializer) Decode(ctx context.Context, r io.Reader, ch chan<- eve
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			var evt Event
+			var evt jsonEvent
 			if err := dec.Decode(&evt); err == io.EOF {
 				loop = false
 				break
@@ -242,53 +152,6 @@ func (s *eventSerializer) Decode(ctx context.Context, r io.Reader, ch chan<- eve
 		}
 	}
 	return nil
-}
-
-func (s *eventSerializer) UnmarshalEventBatch(b []byte) ([]event.Envelope, error) {
-	jsonEvs := []Event{}
-	if err := json.Unmarshal(b, &jsonEvs); err != nil {
-		return nil, err
-	}
-
-	envs := make([]event.Envelope, len(jsonEvs))
-	for i, jsonEv := range jsonEvs {
-		jsonEv := jsonEv
-
-		evt, err := s.eventRegistry.Get(jsonEv.Type())
-		if err != nil {
-			return nil, fmt.Errorf("resolve event type failed %w", err)
-			// panic(fmt.Errorf("unmarshal event faild %w", err))
-		}
-		if err := json.Unmarshal(jsonEv.FRaw, evt); err != nil {
-			return nil, fmt.Errorf("unmarshal event faild %w", err)
-			// panic(fmt.Errorf("unmarshal event faild %w", err))
-		}
-		// evts[i] = evt
-
-		// envs[i] = event.EnvelopEvent(context.Background(), event.NewStreamID(jsonEv.GlobalStreamID()), jsonEv.ID(), evt,
-		// 	func(env event.RWEnvelope) {
-		// 		env.
-		// 			SetAt(jsonEv.At())
-		// 	},
-		// )
-		jsonEv.SetEvent(evt)
-
-		envs[i] = &jsonEv
-
-	}
-
-	// return event.Envelop(context.Background(), event.NewStreamID(jsonEvs[0].GlobalStreamID()), evts, func(env event.Envelope) {
-	// 	env.
-	// 		SetAt(jsonEvs[0].At()).
-	// 		SetAt(env.ID)
-	// }), nil
-
-	// envs := make([]event.Envelope, len(jsonEvs))
-	// for i, jsonEv := range jsonEvs {
-	// 	envs[i] = &jsonEv
-	// }
-
-	return envs, nil
 }
 
 func (s *eventSerializer) ConcatSlice(chunks [][]byte) ([]byte, error) {
@@ -357,4 +220,99 @@ func (s *eventSerializer) Concat(ctx context.Context, chunksLen int, chunks chan
 	}
 
 	return nil
+}
+
+type jsonEvent struct {
+	FGlobalStreamID   string          `json:"GStreamID"`
+	FRawGlobalVersion string          `json:"GVersion"`
+	fGlobalVersion    event.Version   `json:"-"`
+	FStreamID         string          `json:"StreamID"`
+	FRawVersion       string          `json:"Version"`
+	fVersion          event.Version   `json:"-"`
+	FID               string          `json:"ID"`
+	FType             string          `json:"Type"`
+	FRawEvent         json.RawMessage `json:"Data"`
+	fEvent            interface{}     `json:"-"`
+	FAt               int64           `json:"At"`
+	FUser             string          `json:"User"`
+	FDests            []string        `json:"Dests,omitempty"`
+	reg               event.Register  `json:"-"`
+}
+
+var _ event.Envelope = &jsonEvent{}
+
+func (e *jsonEvent) StreamID() string {
+	return e.FStreamID
+}
+
+func (e *jsonEvent) ID() string {
+	return e.FID
+}
+
+func (e *jsonEvent) Type() string {
+	return e.FType
+}
+
+func (e *jsonEvent) Event() interface{} {
+	if e.fEvent != nil {
+		return e.fEvent
+	}
+	evt, err := e.reg.Get(e.Type())
+	if err != nil {
+		log.Println(event.Err(err, e.StreamID()))
+		return nil
+	}
+	if err := json.Unmarshal(e.FRawEvent, evt); err != nil {
+		log.Println(event.Err(fmt.Errorf("unmarshal event data failed"), e.StreamID(), err))
+		return nil
+	}
+	e.fEvent = evt
+
+	return e.fEvent
+}
+
+func (e *jsonEvent) At() time.Time {
+	return time.Unix(0, e.FAt)
+}
+
+// func (e *jsonEvent) SetAt(t time.Time) event.Envelope {
+// 	e.FAt = t.UnixNano()
+// 	return e
+// }
+
+func (e *jsonEvent) Version() event.Version {
+	if !e.fVersion.IsZero() {
+		return e.fVersion
+	}
+	if e.FRawVersion != "" {
+		e.fVersion, _ = event.Ver(e.FRawVersion)
+	}
+	return e.fVersion
+}
+
+func (e *jsonEvent) User() string {
+	return e.FUser
+}
+
+func (e *jsonEvent) GlobalStreamID() string {
+	return e.FGlobalStreamID
+}
+
+func (e *jsonEvent) GlobalVersion() event.Version {
+	if !e.fGlobalVersion.IsZero() {
+		return e.fGlobalVersion
+	}
+	if e.FRawGlobalVersion != "" {
+		e.fGlobalVersion, _ = event.Ver(e.FRawGlobalVersion)
+	}
+	return e.fGlobalVersion
+}
+
+func (e *jsonEvent) Dests() []string {
+	return e.FDests
+}
+
+func (e *jsonEvent) SetGlobalVersion(v event.Version) event.Envelope {
+	e.fGlobalVersion = v
+	return e
 }

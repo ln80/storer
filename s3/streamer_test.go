@@ -243,8 +243,6 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 
-		// testutil.PrintMemUsage()
-
 		count := 0
 		if err := streamer.Replay(ctx, gstmID, filter, func(ctx context.Context, e event.Envelope) error {
 			count++
@@ -252,8 +250,6 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
-
-		// testutil.PrintMemUsage()
 
 		if wantl, l := chunkCount*chunkSize, count; wantl != l {
 			t.Fatalf("expect %d events be persisted, got %d", wantl, l)
@@ -280,8 +276,6 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
-
-		// testutil.PrintMemUsage()
 
 		if wantl, l := chunkCount*chunkSize+latestChunkSize, count; wantl != l {
 			t.Fatalf("expect %d events be persisted, got %d", wantl, l)
