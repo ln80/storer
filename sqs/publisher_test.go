@@ -6,57 +6,40 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
-	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/redaLaanait/storer/event"
 	"github.com/redaLaanait/storer/json"
 )
 
-type Event1 struct{ Val string }
+const msgGroupID = "eventGrpID"
 
-type Event2 struct{ Val string }
+type event1 struct{ Val string }
 
-func (evt *Event2) EvMsgGroupID() string {
-	return "Event2grpID"
+type event2 struct{ Val string }
+
+func (evt *event2) EvMsgGroupID() string {
+	return msgGroupID
 }
 
-type clientMock struct {
-	err    error
-	traces map[string][]types.SendMessageBatchRequestEntry
-}
-
-func (c *clientMock) SendMessageBatch(ctx context.Context,
-	params *sqs.SendMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageBatchOutput, error) {
-	if c.err != nil {
-		return nil, c.err
-	}
-	if c.traces == nil {
-		c.traces = make(map[string][]types.SendMessageBatchRequestEntry)
-	}
-	c.traces[*params.QueueUrl] = params.Entries
-
-	return nil, nil
-}
-
-var _ ClientAPI = &clientMock{}
-
-func TestPublisher(t *testing.T) {
+func TestEventPublisher(t *testing.T) {
 	ctx := context.Background()
-	ser := json.NewEventSerializer("")
+
 	stmID := event.UID().String()
+	queue := "http://queue.url"
 
 	dest1 := "dest1"
 	dest2 := "dest2"
 
+	ser := json.NewEventSerializer("")
+
 	evtAt := time.Now()
 	envs := event.Envelop(ctx, event.NewStreamID(stmID), []interface{}{
-		&Event1{
+		&event1{
 			Val: "test content 1",
 		},
-		&Event1{
+		&event1{
 			Val: "test content 2",
 		},
-		&Event2{ // the 3rd event has a custom group ID
+		&event2{ // Note: the 3rd event belongs to a different Message Group
 			Val: "test content 3",
 		},
 	}, func(env event.RWEnvelope) {
@@ -75,7 +58,7 @@ func TestPublisher(t *testing.T) {
 	})
 
 	t.Run("test publish with queue dest not found", func(t *testing.T) {
-		pub := NewPublisher(&clientMock{}, map[string]string{dest1: "http://queue.url"}, ser)
+		pub := NewPublisher(&clientMock{}, map[string]string{dest1: queue}, ser)
 
 		if wanterr, err := ErrDestQueueNotFound, pub.Publish(ctx, dest2, envs); !errors.Is(err, wanterr) {
 			t.Fatalf("expect err be %v, got %v", wanterr, err)
@@ -84,7 +67,7 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("test publish with infra error", func(t *testing.T) {
 		sqsvc := &clientMock{err: errors.New("infra error")}
-		pub := NewPublisher(sqsvc, map[string]string{dest1: "http://queue.url"}, ser)
+		pub := NewPublisher(sqsvc, map[string]string{dest1: queue}, ser)
 		if wanterr, err := ErrPublishEventFailed, pub.Publish(ctx, dest1, envs); !errors.Is(err, wanterr) {
 			t.Fatalf("expect err be %v, got %v", wanterr, err)
 		}
@@ -92,7 +75,7 @@ func TestPublisher(t *testing.T) {
 
 	t.Run("test successfully publish events", func(t *testing.T) {
 		sqsvc := &clientMock{}
-		queues := map[string]string{dest1: "http://queue.url"}
+		queues := map[string]string{dest1: queue}
 		pub := NewPublisher(sqsvc, queues, ser)
 		if err := pub.Publish(ctx, dest1, envs); err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
@@ -100,7 +83,7 @@ func TestPublisher(t *testing.T) {
 		if wantl, l := len(envs), len(sqsvc.traces[queues[dest1]]); wantl != l {
 			t.Fatalf("expect traces len be equal, got %d, %d", wantl, l)
 		}
-		if wantgrp, grp := "Event2grpID", *sqsvc.traces[queues[dest1]][2].MessageGroupId; wantgrp != grp {
+		if wantgrp, grp := msgGroupID, *sqsvc.traces[queues[dest1]][2].MessageGroupId; wantgrp != grp {
 			t.Fatalf("expect group ids be equals, got %s, %s", wantgrp, grp)
 		}
 	})
