@@ -95,6 +95,9 @@ func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) inte
 	}
 
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
 		opt(s.StoreConfig)
 	}
 	return s

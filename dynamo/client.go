@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
+// ClientAPI presents a sub part of Dynamodb Client Operations especially the ones realated to table items.
 type ClientAPI interface {
 	dynamodb.QueryAPIClient
 
@@ -16,6 +17,7 @@ type ClientAPI interface {
 	TransactWriteItems(ctx context.Context, params *dynamodb.TransactWriteItemsInput, optFns ...func(*dynamodb.Options)) (*dynamodb.TransactWriteItemsOutput, error)
 }
 
+// AdminAPI presents a sub part of Dynamodb Client Operations especially the ones related table.
 type AdminAPI interface {
 	ClientAPI
 

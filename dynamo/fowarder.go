@@ -4,9 +4,11 @@ import (
 	"context"
 
 	"github.com/redaLaanait/storer/event"
-	interevent "github.com/redaLaanait/storer/internal/event"
+	intevent "github.com/redaLaanait/storer/internal/event"
 )
 
+// Forwarder presents the service responsible for forwarding event records from the dynamodb stream
+// to a permanent store, and push-based workers/projectors
 type Forwarder interface {
 	Forward(ctx context.Context, recs []Record) error
 }
@@ -15,11 +17,11 @@ type forwarder struct {
 	svc        ClientAPI
 	table      string
 	serializer event.Serializer
-	persister  interevent.Persister
+	persister  intevent.Persister
 	publisher  event.Publisher
 }
 
-func NewForwarder(dbsvc ClientAPI, table string, per interevent.Persister, pub event.Publisher, ser event.Serializer) Forwarder {
+func NewForwarder(dbsvc ClientAPI, table string, per intevent.Persister, pub event.Publisher, ser event.Serializer) Forwarder {
 	return &forwarder{
 		svc:        dbsvc,
 		table:      table,
@@ -35,7 +37,9 @@ func (f *forwarder) Forward(ctx context.Context, recs []Record) error {
 	}
 
 	// find/initialize records global streams
-	gstms, err := getGSTMBatch(ctx, f.svc, f.table, streamIDsFrom(recs))
+	gstms, err := getGSTMBatch(ctx, f.svc, f.table, GSTMFilter{
+		StreamIDs: streamIDsFrom(recs),
+	})
 	if err != nil {
 		return err
 	}
@@ -100,7 +104,7 @@ func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[strin
 				SetGlobalVersion(v event.Version) event.Envelope
 			})
 			if !ok {
-				return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, "unmarchled event does not support SetGlobalVersion")
+				return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, "unmarshled event does not support SetGlobalVersion")
 			}
 			rev.SetGlobalVersion(ver)
 			mevs[gstmID] = append(mevs[gstmID], rev)

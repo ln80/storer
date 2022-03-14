@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/redaLaanait/storer/event"
-	interevent "github.com/redaLaanait/storer/internal/event"
+	intevent "github.com/redaLaanait/storer/internal/event"
 	"github.com/redaLaanait/storer/internal/testutil"
 	"github.com/redaLaanait/storer/json"
 )
@@ -35,7 +35,7 @@ type persisterMock struct {
 	traces map[string][]event.Envelope
 }
 
-var _ interevent.Persister = &persisterMock{}
+var _ intevent.Persister = &persisterMock{}
 
 func (p *persisterMock) Persist(ctx context.Context, stmID event.StreamID, envs event.Stream) error {
 	if p.err != nil {
@@ -63,7 +63,6 @@ func TestEventForwarder(t *testing.T) {
 
 	ser := json.NewEventSerializer("")
 
-	// event.NewRegister("")
 	withTable(t, dbsvc, func(table string) {
 		t.Run("test forward invalid record case 1", func(t *testing.T) {
 			gstmID := event.UID().String()

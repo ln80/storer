@@ -114,9 +114,11 @@ func TestInternal_GSTM_Batch(t *testing.T) {
 			event.UID().String(),
 		}
 
-		// test find stms not yet persisted in table
-		// this must return an init & invalid list of stms
-		initstms, err := getGSTMBatch(ctx, dbsvc, table, stmIDs)
+		// test find streams not yet persisted in table
+		// this must return an empty list of streams
+		initstms, err := getGSTMBatch(ctx, dbsvc, table, GSTMFilter{
+			StreamIDs: stmIDs,
+		})
 		if err != nil {
 			t.Fatalf("expect err be nil, got err: %v", err)
 		}
@@ -143,7 +145,9 @@ func TestInternal_GSTM_Batch(t *testing.T) {
 		if err := persistGSTMBatch(ctx, dbsvc, table, initstms); err != nil {
 			t.Fatalf("expect err be nil, got err: %v", err)
 		}
-		rstms, err := getGSTMBatch(ctx, dbsvc, table, stmIDs)
+		rstms, err := getGSTMBatch(ctx, dbsvc, table, GSTMFilter{
+			StreamIDs: stmIDs,
+		})
 		if err != nil {
 			t.Fatalf("expect err be nil, got err: %v", err)
 		}
@@ -155,7 +159,7 @@ func TestInternal_GSTM_Batch(t *testing.T) {
 		}
 
 		// test partial stm update
-		// corrupt the last stm and check that previous ones are correctly updated
+		// corrupt the last stream and check that previous ones are correctly updated
 		corruptstmID := stmIDs[len(stmIDs)-1]
 		for stmID := range initstms {
 			if stmID == corruptstmID {
@@ -169,7 +173,9 @@ func TestInternal_GSTM_Batch(t *testing.T) {
 		if err = persistGSTMBatch(ctx, dbsvc, table, initstms); err == nil {
 			t.Errorf("expect err %v, got nil", ErrValidateGSTMFailed)
 		}
-		rstms2, err := getGSTMBatch(ctx, dbsvc, table, stmIDs)
+		rstms2, err := getGSTMBatch(ctx, dbsvc, table, GSTMFilter{
+			StreamIDs: stmIDs,
+		})
 		if err != nil {
 			t.Fatalf("expect err be nil, got err: %v", err)
 		}

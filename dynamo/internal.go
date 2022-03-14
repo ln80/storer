@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -18,7 +19,7 @@ var (
 	ErrValidateGSTMFailed    = errors.New("global stream validation error")
 	ErrUpdateGSTMFailed      = errors.New("failed to update global stream")
 	ErrCreateGSTMFailed      = errors.New("failed to create global stream")
-	ErrUnexpectedGSTMFailure = errors.New("unexpected failure")
+	ErrUnexpectedGSTMFailure = errors.New("global stream unexpected failure")
 	ErrGSTMNotFound          = errors.New("global stream not found")
 )
 
@@ -92,10 +93,6 @@ func persistGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstm GSTM) 
 		return event.Err(ErrUnexpectedGSTMFailure, gstm.StreamID, err)
 	}
 
-	// fmt.Printf("ConditionExpression: %s\n", spew.Sdump(expr.Condition()))
-	// fmt.Printf("Names: %s\n", spew.Sdump(expr.Names()))
-	// fmt.Printf("Values: %s\n", spew.Sdump(expr.Values()))
-	// fmt.Printf("Update Expression: %q\n", aws.ToString(expr.Update()))
 	if _, err = dbsvc.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName:                 aws.String(table),
 		Item:                      mgstm,
@@ -123,10 +120,6 @@ func persistGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstm GSTM) 
 				return event.Err(ErrUnexpectedGSTMFailure, gstm.StreamID, err)
 			}
 
-			// fmt.Printf("ConditionExpression: %s\n", spew.Sdump(expr.Condition()))
-			// fmt.Printf("Names: %s\n", spew.Sdump(expr.Names()))
-			// fmt.Printf("Values: %s\n", spew.Sdump(expr.Values()))
-			// fmt.Printf("Update Expression: %q\n", aws.ToString(expr.Update()))
 			if _, err = dbsvc.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 				Key: map[string]types.AttributeValue{
 					HashKey:  &types.AttributeValueMemberS{Value: gstm.HashKey},
@@ -182,11 +175,35 @@ func getGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstmID string) 
 	return &items[0], nil
 }
 
-func getGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, stmIDs []string) (map[string]*GSTM, error) {
-	if len(stmIDs) == 0 {
-		return nil, nil
-	}
+type GSTMFilter struct {
+	StreamIDs    []string
+	UpdatedAfter time.Time
+}
 
+func (f GSTMFilter) build() (filter expression.ConditionBuilder) {
+	var idsF, updatedF expression.ConditionBuilder
+	if l := len(f.StreamIDs); l > 0 {
+		ops := []expression.OperandBuilder{}
+		for i := 0; i < l; i++ {
+			ops = append(ops, expression.Value(f.StreamIDs[i]))
+			ops = append(ops, expression.Value(f.StreamIDs[i]))
+		}
+		idsF = expression.Name("stmID").In(ops[0], ops[1:l]...)
+	}
+	if !f.UpdatedAfter.IsZero() {
+		updatedF = expression.Name("uat").GreaterThanEqual(expression.Value(f.UpdatedAfter.UnixNano()))
+	}
+	if updatedF.IsSet() && idsF.IsSet() {
+		filter = expression.And(updatedF, idsF)
+	} else if updatedF.IsSet() {
+		filter = updatedF
+	} else if idsF.IsSet() {
+		filter = idsF
+	}
+	return
+}
+
+func getGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, f GSTMFilter) (map[string]*GSTM, error) {
 	b := expression.NewBuilder().
 		WithKeyCondition(
 			expression.Key(HashKey).
@@ -196,22 +213,15 @@ func getGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, stmIDs []s
 					BeginsWith(gstmRangeKey("")),
 				),
 		)
-	if l := len(stmIDs); l > 0 {
-		ops := []expression.OperandBuilder{}
-		for i := 0; i < l; i++ {
-			ops = append(ops, expression.Value(stmIDs[i]))
-			ops = append(ops, expression.Value(stmIDs[i]))
-		}
-
-		b.WithFilter(
-			expression.Name("stmID").In(ops[0], ops[1:l]...))
+	fexpr := f.build()
+	if fexpr.IsSet() {
+		b.WithFilter(fexpr)
 	}
 
-	strStmID := strings.Join(stmIDs, ",")
-
+	strIDs := strings.Join(f.StreamIDs, ",")
 	expr, err := b.Build()
 	if err != nil {
-		return nil, event.Err(ErrUnexpectedGSTMFailure, strStmID, err)
+		return nil, event.Err(ErrUnexpectedGSTMFailure, strIDs, err)
 	}
 
 	// fmt.Printf("ConditionExpression: %s\n", spew.Sdump(expr.Condition()))
@@ -228,13 +238,13 @@ func getGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, stmIDs []s
 		ConsistentRead:            aws.Bool(true),
 	})
 	if err != nil {
-		return nil, event.Err(ErrUnexpectedGSTMFailure, strStmID, err)
+		return nil, event.Err(ErrUnexpectedGSTMFailure, strIDs, err)
 	}
 
 	items := []GSTM{}
 	err = attributevalue.UnmarshalListOfMaps(out.Items, &items)
 	if err != nil {
-		return nil, event.Err(ErrUnexpectedGSTMFailure, strStmID, err)
+		return nil, event.Err(ErrUnexpectedGSTMFailure, strIDs, err)
 	}
 
 	gstms := map[string]*GSTM{}
@@ -242,7 +252,7 @@ func getGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, stmIDs []s
 		gstm := i
 		gstms[i.StreamID] = &gstm
 	}
-	for _, id := range stmIDs {
+	for _, id := range f.StreamIDs {
 		if _, ok := gstms[id]; !ok {
 			gstms[id] = &GSTM{
 				Item: Item{

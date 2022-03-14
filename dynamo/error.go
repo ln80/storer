@@ -9,6 +9,8 @@ import (
 	"github.com/aws/smithy-go/transport/http"
 )
 
+// IsConditionCheckFailure checks if the given error is an aws error that expresses a conditional failure exception.
+// It works seamlessly in both single write and within a transaction operation.
 func IsConditionCheckFailure(err error) bool {
 	if strings.Contains(err.Error(), "ConditionalCheckFailedException") {
 		return true
