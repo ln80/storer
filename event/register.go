@@ -69,7 +69,7 @@ func NewRegister(namespace string) Register {
 // In case of namespace exists, the event name becomes {namespace}.{evnet struct name}
 func (r *register) Set(evt interface{}) Register {
 	name := TypeOfWithNamspace(r.namespace, evt)
-	rType, _ := solveType(evt)
+	rType, _ := resolveType(evt)
 
 	regMu.Lock()
 	defer regMu.Unlock()

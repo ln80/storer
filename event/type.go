@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// solveType of the given value (mainly an event),
-func solveType(v interface{}) (reflect.Type, string) {
+// resolveType of the given value (mainly an event),
+func resolveType(v interface{}) (reflect.Type, string) {
 	rType := reflect.TypeOf(v)
 	if rType.Kind() == reflect.Ptr {
 		rType = rType.Elem()
@@ -20,7 +20,7 @@ func TypeOf(v interface{}) (vtype string) {
 	if v == nil {
 		return ""
 	}
-	_, vtype = solveType(v)
+	_, vtype = resolveType(v)
 	return
 }
 
