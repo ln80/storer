@@ -15,7 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/redaLaanait/storer/event"
-	interevent "github.com/redaLaanait/storer/internal/event"
+	intevent "github.com/redaLaanait/storer/internal/event"
 	"github.com/redaLaanait/storer/json"
 	"golang.org/x/sync/errgroup"
 )
@@ -132,21 +132,24 @@ func makeObjectQuery(provider string, filter event.StreamFilter) (query string) 
 	return query
 }
 
-type StreamMaintainer interface {
+// StreamMerger presents the service that merge event chunks into partition.
+// At this stage I see it as a specific interface of S3 package, but it may moves to internal package.
+type StreamMerger interface {
 	MergeChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error
 }
 
-// type Persister interface {
-// 	Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error
-// }
+// StreamManager presents the all on in one interface for s3 stream related operations
+type StreamManager interface {
+	event.Streamer
+	intevent.Persister
+	StreamMerger
+}
 
 var (
-	_ interevent.Persister = &eventStreamer{}
-	_ event.Streamer       = &eventStreamer{}
-	_ StreamMaintainer     = &eventStreamer{}
+	_ StreamManager = &streamMgr{}
 )
 
-type eventStreamer struct {
+type streamMgr struct {
 	bucket string
 
 	svc ClientAPI
@@ -161,24 +164,16 @@ type StreamerConfig struct {
 	Provider     string
 }
 
-func NewEventPersister(svc ClientAPI, bucket string, ser event.Serializer) interevent.Persister {
-	return &eventStreamer{
-		bucket:     bucket,
-		svc:        svc,
-		serializer: ser,
-	}
-}
-
-func (s *eventStreamer) newInstance(ctx context.Context) (*streamInstance, context.Context) {
+func (s *streamMgr) newInstance(ctx context.Context) (*streamInstance, context.Context) {
 	g, ctx := errgroup.WithContext(ctx)
 
 	return &streamInstance{
-		eventStreamer: s,
-		g:             g,
+		streamMgr: s,
+		g:         g,
 	}, ctx
 }
 
-func (s *eventStreamer) Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error {
+func (s *streamMgr) Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error {
 	stm := event.Stream(evts)
 	if stm.Empty() {
 		return nil
@@ -215,11 +210,11 @@ func (s *eventStreamer) Persist(ctx context.Context, stmID event.StreamID, evts 
 	return nil
 }
 
-func NewEventStreamer(svc ClientAPI, bucket string, serializer event.Serializer, opts ...func(cfg *StreamerConfig)) event.Streamer {
+func NewStreamManager(svc ClientAPI, bucket string, serializer event.Serializer, opts ...func(cfg *StreamerConfig)) StreamManager {
 	if serializer == nil {
 		serializer = json.NewEventSerializer("")
 	}
-	stmer := &eventStreamer{
+	stmer := &streamMgr{
 		svc:        svc,
 		bucket:     bucket,
 		serializer: serializer,
@@ -235,7 +230,7 @@ func NewEventStreamer(svc ClientAPI, bucket string, serializer event.Serializer,
 	return stmer
 }
 
-func (s *eventStreamer) queryObjectInput(bucket, key, query string) *s3.SelectObjectContentInput {
+func (s *streamMgr) queryObjectInput(bucket, key, query string) *s3.SelectObjectContentInput {
 	input := &s3.SelectObjectContentInput{
 		Bucket:         aws.String(bucket),
 		Key:            aws.String(key),
@@ -256,7 +251,7 @@ func (s *eventStreamer) queryObjectInput(bucket, key, query string) *s3.SelectOb
 	return input
 }
 
-func (s *eventStreamer) listObject(ctx context.Context, stmID, root string, f event.StreamFilter) ([]string, error) {
+func (s *streamMgr) listObject(ctx context.Context, stmID, root string, f event.StreamFilter) ([]string, error) {
 	if len(stmID) == 0 {
 		return nil, event.Err(event.ErrInvalidStream, stmID, "empty stream id")
 	}
@@ -301,7 +296,7 @@ type queryRequest struct {
 	result chan event.Envelope
 }
 
-func (s *eventStreamer) MergeChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error {
+func (s *streamMgr) MergeChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error {
 	keys, err := s.listObject(ctx, stmID.GlobalID(), FolderChunks, f)
 	if err != nil {
 		return err
@@ -322,7 +317,7 @@ func (s *eventStreamer) MergeChunks(ctx context.Context, stmID event.StreamID, f
 	return inst.g.Wait()
 }
 
-func (s *eventStreamer) queryObject(ctx context.Context, query, key string, queue chan event.Envelope) error {
+func (s *streamMgr) queryObject(ctx context.Context, query, key string, queue chan event.Envelope) error {
 	defer close(queue)
 	resp, err := s.svc.SelectObjectContent(ctx, s.queryObjectInput(s.bucket, key, query))
 	if err != nil {
@@ -380,7 +375,7 @@ func resumeFromChunks(f event.StreamFilter, keys []string) (event.StreamFilter, 
 
 // Replay queries a window of the stream and process in order the events
 // it fails if the stream is corrupted e.g an invalid sequence is encounter
-func (s *eventStreamer) Replay(ctx context.Context, id event.StreamID, f event.StreamFilter, h event.StreamHandler) error {
+func (s *streamMgr) Replay(ctx context.Context, id event.StreamID, f event.StreamFilter, h event.StreamHandler) error {
 	f.Build()
 
 	partkeys, err := s.listObject(ctx, id.GlobalID(), FolderPartitions, f)
@@ -427,7 +422,7 @@ func (s *eventStreamer) Replay(ctx context.Context, id event.StreamID, f event.S
 }
 
 type streamInstance struct {
-	*eventStreamer
+	*streamMgr
 
 	g *errgroup.Group
 
