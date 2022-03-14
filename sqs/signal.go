@@ -54,12 +54,12 @@ func (s *signalMgr) Send(ctx context.Context, sig signal.Signal) error {
 	s.appendSignal(sig)
 
 	if s.bufferSize() >= s.SignalConfig.bufferSize {
-		s.Flush(ctx, nil)
+		s.FlushBuffer(ctx, nil)
 	}
 	return nil
 }
 
-func (s *signalMgr) Flush(ctx context.Context, terr *error) error {
+func (s *signalMgr) FlushBuffer(ctx context.Context, terr *error) error {
 	// No need to flush if an error already occured + passed to flush method.
 	// Flush call is likely done in a defer fashion
 	if terr != nil && *terr != nil {

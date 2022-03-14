@@ -56,7 +56,7 @@ func TestSignalManager(t *testing.T) {
 	// test flush buffered signals with failure
 	sigMgr.(*signalMgr).svc = &clientMock{err: errors.New("sqs error")}
 	var terr error
-	sigMgr.Flush(ctx, &terr)
+	sigMgr.FlushBuffer(ctx, &terr)
 	if wantErr, err := signal.ErrSendSignalFailed, terr; !errors.Is(err, wantErr) {
 		t.Fatalf("expect err be %v, got %v", wantErr, err)
 	}
@@ -64,7 +64,7 @@ func TestSignalManager(t *testing.T) {
 	// test flush send signals with success
 	sigMgr.(*signalMgr).svc = &clientMock{}
 	var terr2 error
-	sigMgr.Flush(ctx, &terr2)
+	sigMgr.FlushBuffer(ctx, &terr2)
 	if terr2 != nil {
 		t.Fatalf("expect err be nil, got %v", terr2)
 	}
