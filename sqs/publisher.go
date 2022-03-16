@@ -37,9 +37,13 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 		return nil
 	}
 	stmID := evts[0].StreamID()
+
+	// skip publish if queues map is empty (still not intuitive)
 	if p.queues == nil {
-		return event.Err(ErrDestQueueNotFound, stmID, "dest: "+dest)
+		// return event.Err(ErrDestQueueNotFound, stmID, "dest: "+dest)
+		return nil
 	}
+
 	queue, ok := p.queues[dest]
 	if !ok {
 		return event.Err(ErrDestQueueNotFound, stmID, "dest: "+dest)
