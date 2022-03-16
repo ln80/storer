@@ -28,7 +28,8 @@ type Record struct {
 func streamIDsFrom(recs []Record) []string {
 	mapIDs := make(map[string]string)
 	for _, r := range recs {
-		mapIDs[r.HashKey] = r.HashKey
+		splits := strings.Split(r.HashKey, "#")
+		mapIDs[splits[0]] = splits[0]
 	}
 	ids := make([]string, 0, len(mapIDs))
 	for k := range mapIDs {
