@@ -275,11 +275,6 @@ func (e *jsonEvent) At() time.Time {
 	return time.Unix(0, e.FAt)
 }
 
-// func (e *jsonEvent) SetAt(t time.Time) event.Envelope {
-// 	e.FAt = t.UnixNano()
-// 	return e
-// }
-
 func (e *jsonEvent) Version() event.Version {
 	if !e.fVersion.IsZero() {
 		return e.fVersion
@@ -314,5 +309,6 @@ func (e *jsonEvent) Dests() []string {
 
 func (e *jsonEvent) SetGlobalVersion(v event.Version) event.Envelope {
 	e.fGlobalVersion = v
+	e.FRawGlobalVersion = e.fGlobalVersion.String()
 	return e
 }
