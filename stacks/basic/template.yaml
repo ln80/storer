@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Storer Basic Event Store
+
+Globals:
+  Function:
+    Timeout: 5
+    Runtime: go1.x
+
+Parameters:
+  AppPrefix:
+    Type: String
+    Default: ""
+  
+  ForwardQueueMap:
+    Type: String
+    Default: ""
+
+  DynamoDBBillingMode:
+    Type: String
+    Default: PAY_PER_REQUEST
+    AllowedValues:
+      - PROVISIONED
+      - PAY_PER_REQUEST
+  DynamoDBReadCapacity:
+    Type: Number
+    Default: 0
+  DynamoDBWriteCapacity:
+    Type: Number
+    Default: 0
+
+Conditions:
+  DynamoDBInProvisionedMode: !Equals [!Ref DynamoDBBillingMode, PROVISIONED]
+
+Resources:
+  EventTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+        TableName: !Sub ${AppPrefix}-event-table
+        AttributeDefinitions:
+          -
+            AttributeName: _pk
+            AttributeType: S
+          -
+            AttributeName: _sk
+            AttributeType: S
+        KeySchema:
+          -
+            AttributeName: _pk
+            KeyType: HASH
+          -
+            AttributeName: _sk
+            KeyType: RANGE
+        TimeToLiveSpecification:
+            AttributeName: _ttl
+            Enabled: true
+        BillingMode: !Ref DynamoDBBillingMode
+        ProvisionedThroughput:
+          ReadCapacityUnits: !Ref DynamoDBReadCapacity
+          WriteCapacityUnits: !Ref DynamoDBWriteCapacity
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+
+  EventBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketName: !Sub ${AppPrefix}-event-bucket
+
+  EventInternalWorkQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+        # QueueName: !Sub ${AppPrefix}-EventJobQueue.fifo
+        FifoQueue: true
+        ReceiveMessageWaitTimeSeconds: 20
+        VisibilityTimeout: 180
+
+  # LAMBDA FUNCTIONS:
+
+  EventForwarderFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AppPrefix}-EventForwarderFunction
+      CodeUri: forwarder/
+      Handler: forwarder
+      Events:
+        StreamEvent:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt  EventTable.StreamArn
+            StartingPosition: TRIM_HORIZON
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName": ["INSERT"], "dynamodb": { "Keys" : {"_pk": {"S": [{"anything-but": [ "internal" ]}]}}}}'
+      Policies:
+        - AWSLambdaDynamoDBExecutionRole
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventTable
+        - S3WritePolicy:
+            BucketName: !Ref EventBucket
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'sqs:SendMessage*'
+              Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:*"
+      Environment:
+          Variables:
+            SQS_PUBLISH_QUEUES: !Ref ForwardQueueMap
+            S3_BUCKET: !Ref EventBucket
+            DYNAMODB_TABLE: !Ref EventTable
+
+  EventSchedularFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AppPrefix}-EventSchedularFunction
+      CodeUri: schedular/
+      Handler: schedular
+      Events:
+        InvocationEvent:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 0 * * ? *)
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EventTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt EventInternalWorkQueue.QueueName
+      Environment:
+          Variables:
+            DYNAMODB_TABLE: !Ref EventTable
+            SQS_QUEUE:  !GetAtt EventInternalWorkQueue.QueueName
+
+  EventInternalWorkFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AppPrefix}-EventInternalWorkFunction
+      Timeout: 30
+      CodeUri: worker/
+      Handler: worker
+      Events:
+        EventJobEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EventInternalWorkQueue.Arn
+            BatchSize: 1
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref EventBucket
+      Environment:
+          Variables:
+            S3_BUCKET: !Ref EventBucket
+            SQS_QUEUE:  !GetAtt EventInternalWorkQueue.QueueName
+
+  IntegrationTest:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AppPrefix}-IntegrationTest
+      Timeout: 60
+      CodeUri: test/
+      Handler: test
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Sub ${AppPrefix}-event-bucket
+        - DynamoDBCrudPolicy:
+            TableName: !Sub ${AppPrefix}-event-table
+      Environment:
+          Variables:
+            S3_BUCKET: !Sub ${AppPrefix}-event-bucket
+            DYNAMODB_TABLE: !Sub ${AppPrefix}-event-table
+
+## TODO  define & export policy for both table and bucket
+
+Outputs:
+  EventTable:
+    Description: "Event Table"
+    Value: !Ref EventTable
+  EventBucket:
+    Description: "Event Bucket"
+    Value: !Ref EventBucket

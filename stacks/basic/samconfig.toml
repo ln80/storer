@@ -1,0 +1,12 @@
+version = 0.1
+[test]
+[test.deploy]
+[test.deploy.parameters]
+stack_name = "storer-basic-test"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1er7c9t07awga"
+s3_prefix = "storer-basic-test"
+region = "eu-west-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "AppPrefix=\"storer-basic-test\" ForwardQueueMap=\"\" DynamoDBBillingMode=\"PAY_PER_REQUEST\" DynamoDBReadCapacity=\"0\" DynamoDBWriteCapacity=\"0\""
+image_repositories = []
