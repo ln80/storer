@@ -70,7 +70,7 @@ func TestSignalManager(t *testing.T) {
 	}
 
 	// test send buffered signals is flushed when buffer limit is reached
-	bufferSize := 200
+	bufferSize := 10
 	sigMgr = NewSignalManager(&clientMock{}, queue, func(cfg *SignalConfig) {
 		cfg.bufferSize = bufferSize
 	})

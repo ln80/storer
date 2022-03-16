@@ -34,7 +34,7 @@ func NewSignalManager(svc ClientAPI, queue string, opts ...func(cfg *SignalConfi
 	sigmng := &signalMgr{
 		svc:          svc,
 		queue:        queue,
-		SignalConfig: &SignalConfig{bufferSize: 100},
+		SignalConfig: &SignalConfig{bufferSize: 10},
 	}
 	for _, opt := range opts {
 		if opt == nil {
