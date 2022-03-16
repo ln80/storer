@@ -8,7 +8,7 @@ import (
 
 	"github.com/redaLaanait/storer/event"
 	intevent "github.com/redaLaanait/storer/internal/event"
-	"github.com/redaLaanait/storer/internal/testutil"
+	"github.com/redaLaanait/storer/testutil"
 )
 
 func TestEventStreamer_Persist(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 
 	"github.com/redaLaanait/storer/event"
 	intevent "github.com/redaLaanait/storer/internal/event"
-	"github.com/redaLaanait/storer/internal/testutil"
 	"github.com/redaLaanait/storer/json"
+	"github.com/redaLaanait/storer/testutil"
 )
 
 type publisherMock struct {

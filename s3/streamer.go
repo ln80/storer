@@ -282,7 +282,6 @@ func (s *streamMgr) listObject(ctx context.Context, stmID, root string, f event.
 			keys = append(keys, *obj.Key)
 		}
 	}
-
 	return keys, nil
 }
 

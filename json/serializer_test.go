@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/internal/testutil"
+	"github.com/redaLaanait/storer/testutil"
 )
 
 func TestEventSerialiser(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/internal/testutil"
+	"github.com/redaLaanait/storer/testutil"
 )
 
 var dbsvc AdminAPI

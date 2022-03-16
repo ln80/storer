@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -124,7 +123,6 @@ func (s *store) AppendToStream(ctx context.Context, chunk sourcing.Stream) error
 		lastVer = stmdb[len(stmdb)-1].Version()
 	}
 	if !chunk.Version().Trunc().Equal(event.VersionMin) && !chunk.Version().Next(lastVer) {
-		log.Println("v----->", chunk.Version())
 		return event.Err(event.ErrAppendEventsFailed, chunk.ID().String(), "invalid chunk version, it must be in sequence with: "+lastVer.String())
 	}
 
