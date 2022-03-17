@@ -49,17 +49,14 @@ func TestEventPublisher(t *testing.T) {
 
 	t.Run("test publish with empty queues map", func(t *testing.T) {
 		sqsvc := &clientMock{}
-
 		pub := NewPublisher(sqsvc, nil, ser)
-
-		if wanterr, err := ErrDestQueueNotFound, pub.Publish(ctx, dest1, envs); !errors.Is(err, wanterr) {
-			t.Fatalf("expect err be %v, got %v", wanterr, err)
+		if err := pub.Publish(ctx, dest1, envs); err != nil {
+			t.Fatalf("expect err be nil, got %v", err)
 		}
 	})
 
 	t.Run("test publish with queue dest not found", func(t *testing.T) {
 		pub := NewPublisher(&clientMock{}, map[string]string{dest1: queue}, ser)
-
 		if wanterr, err := ErrDestQueueNotFound, pub.Publish(ctx, dest2, envs); !errors.Is(err, wanterr) {
 			t.Fatalf("expect err be %v, got %v", wanterr, err)
 		}
