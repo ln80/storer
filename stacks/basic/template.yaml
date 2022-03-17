@@ -78,6 +78,7 @@ Resources:
         VisibilityTimeout: 180
 
   # LAMBDA FUNCTIONS:
+  #
 
   EventForwarderFunction:
     Type: AWS::Serverless::Function
