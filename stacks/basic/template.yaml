@@ -65,8 +65,8 @@ Resources:
   EventBucket:
     Type: AWS::S3::Bucket
     Properties:
-      VersioningConfiguration:
-        Status: Enabled
+      # VersioningConfiguration:
+      #   Status: Enabled
       BucketName: !Sub ${AppPrefix}-event-bucket
 
   EventInternalWorkQueue:
@@ -171,7 +171,7 @@ Resources:
             S3_BUCKET: !Sub ${AppPrefix}-event-bucket
             DYNAMODB_TABLE: !Sub ${AppPrefix}-event-table
 
-## TODO  define & export policy for both table and bucket
+## TODO define & export policy for both table and bucket
 
 Outputs:
   EventTable:
