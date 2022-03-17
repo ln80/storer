@@ -9,7 +9,7 @@ on:
   
 defaults:
   run:
-    working-directory: stacks/basic
+    # working-directory: stacks/basic
 
 jobs:
   build-deploy:
@@ -39,22 +39,27 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Make dispaly stack name
+        working-directory: ./stacks/basic
         run: |
           make stackname
+        
       
       - name: Build stack
-        # working-directory: ./stacks/basic
+        working-directory: ./stacks/basic
         run: |
           make build
 
       - name: Deploy integration tests stack
+        working-directory: ./stacks/basic
         run: |
           make integration-test/deploy
 
       - name: Run integration tests
+        working-directory: ./stacks/basic
         run: |
           make integration-test/run
 
       - name: Clear integration tests resources
+        working-directory: ./stacks/basic
         run: |
           make integration-test/clear

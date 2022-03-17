@@ -77,7 +77,7 @@ Resources:
         ReceiveMessageWaitTimeSeconds: 20
         VisibilityTimeout: 180
 
-  # LAMBDA FUNCTIONS :
+  # LAMBDA FUNCTIONS:
 
   EventForwarderFunction:
     Type: AWS::Serverless::Function
