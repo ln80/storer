@@ -45,6 +45,6 @@ func init() {
 	store := dynamo.NewEventStore(dbsvc, table)
 
 	streamer := s3.NewStreamManager(s3svc, bucket, json.NewEventSerializer(""))
-	//
+
 	integrationTest = testutil.MakeIntegrationTest_StoreAndStreamer(store, streamer)
 }

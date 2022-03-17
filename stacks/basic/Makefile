@@ -31,6 +31,7 @@ integration-test/deploy:
 		--parameter-overrides "$(TEST_PARAMS)"
 
 integration-test/clear:
+	aws s3 rm s3://$(STACK_NAME)-event-bucket --recursive
 	sam delete --no-prompts --stack-name $(STACK_NAME) --region $(REGION)
 
 integration-test/run:

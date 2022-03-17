@@ -16,11 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Generate Stack Name
-        run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV
+        run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV && echo ${{ env.STACK_NAME }}
      
-      - name: Display stack name
-        run: echo ${{ env.STACK_NAME }}
-      
       - uses: actions/checkout@v2
       
       - name: Setup Go
@@ -38,12 +35,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Make dispaly stack name
-        working-directory: ./stacks/basic
-        run: |
-          make stackname
-        
-      
       - name: Build stack
         working-directory: ./stacks/basic
         run: |
@@ -59,6 +50,7 @@ jobs:
         run: |
           make integration-test/run
 
+      # make sure to manually run the cmd after debugging failed tests
       - name: Clear integration tests resources
         working-directory: ./stacks/basic
         run: |
