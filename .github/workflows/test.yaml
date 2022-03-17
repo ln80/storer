@@ -1,15 +1,15 @@
-name: Test Storer event store
+name: Test Storer Event Store
 
 on:
   push:
-    branches: [init]
+    branches: [main]
   pull_request:
-    branches: [init]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    name: Test Storer go packages 
+    name: Test Storer Go packages 
     services:
       dynamodb:
         image: amazon/dynamodb-local
@@ -24,7 +24,9 @@ jobs:
           MINIO_ROOT_PASSWORD: minioadmin
         # volumes:
         #   - ${{ github.workspace }}/minio:/data
-        options: --name=minio --health-cmd "curl http://localhost:9000/minio/health/live"
+        options: >-
+          --name=minio 
+          --health-cmd "curl http://localhost:9000/minio/health/live"
       
     steps:
       - uses: actions/checkout@v2
@@ -40,7 +42,7 @@ jobs:
         working-directory: ./source
         run: |
           make test
-        env: 
+        env:
           DYNAMODB_ENDPOINT: http://localhost:8070
           S3_ENDPOINT: http://localhost:8071
 

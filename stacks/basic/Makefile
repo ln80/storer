@@ -3,8 +3,16 @@
 
 TEST_ENV = test
 REGION = eu-west-1
-STACK_NAME = storer-basic-test
+# STACK_NAME = storer-basic-test-$(shell /bin/bash -c "echo $$RANDOM")
+# STACK_NAME = storer-basic-test
+ifndef STACK_NAME
+override STACK_NAME = storer-basic-test
+endif
+
 TEST_PARAMS = "AppPrefix=$(STACK_NAME)"
+
+stackname:
+	echo $(STACK_NAME)
 
 build:
 	sam build --cached
@@ -12,18 +20,20 @@ build:
 # package:
 # 	sam package
 
-integration_test/deploy:
+integration-test/deploy:
 	sam deploy \
+		--no-confirm-changeset \
+		--no-fail-on-empty-changeset \
 		--stack-name $(STACK_NAME) \
 		--config-env $(TEST_ENV) \
 		--capabilities CAPABILITY_IAM\
 		--region $(REGION) \
 		--parameter-overrides "$(TEST_PARAMS)"
 
-integration_test/clear:
-	sam delete  --stack-name $(STACK_NAME) --region $(REGION)
+integration-test/clear:
+	sam delete --no-prompts --stack-name $(STACK_NAME) --region $(REGION)
 
-integration_test/run:
+integration-test/run:
 	sam local invoke \
 		--no-event \
 	 	IntegrationTest \
