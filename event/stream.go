@@ -198,13 +198,18 @@ func (stm Stream) Validate(opts ...func(v *Validation)) error {
 	if stml = len(stm); stml == 0 {
 		return nil
 	}
-	cur := NewCursor(stm[0].StreamID())
 
 	// reduce validation opts to a single one
 	rv := &Validation{}
 	for _, opt := range opts {
 		opt(rv)
 	}
+
+	cur := NewCursor(stm[0].StreamID())
+	if rv.GlobalStream {
+		cur = NewCursor(stm[0].GlobalStreamID())
+	}
+
 	rv.Filter = StreamFilter{
 		From: resolveVer(stm[0], rv.GlobalStream),
 		To:   resolveVer(stm[stml-1], rv.GlobalStream),
