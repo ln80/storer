@@ -7,8 +7,8 @@ on:
     paths:
       - 'stacks/basic/**'
   
-defaults:
-  run:
+# defaults:
+#   run:
     # working-directory: stacks/basic
 
 jobs:
