@@ -30,8 +30,8 @@ func MakeIntegrationTest_StoreAndStreamer(store event.Store, streamer event.Stre
 	RegisterEvent()
 
 	return func(ctx context.Context) error {
-		// gstmID := event.UID().String()
-		gstmID := "testest"
+		gstmID := event.UID().String()
+		// gstmID := "testest"
 		stmID := event.NewStreamID(gstmID, "service")
 
 		evts := []interface{}{
