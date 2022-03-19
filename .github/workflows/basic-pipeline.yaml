@@ -21,6 +21,8 @@ on:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+    name: Build Publish stack
+    
     steps:
       - name: Generate stack Name
         run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV
