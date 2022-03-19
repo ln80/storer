@@ -3,6 +3,7 @@ package event
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -12,6 +13,7 @@ var (
 )
 
 var (
+	ErrInvalidStreamID      = errors.New("invalid stream ID")
 	ErrInvalidStream        = errors.New("invalid event stream")
 	ErrCursorNotFound       = errors.New("cursor not found")
 	ErrAppendEventsConflict = errors.New("append events conflict")
@@ -54,6 +56,15 @@ func NewStreamID(global string, parts ...string) StreamID {
 		parts:  parts,
 	}
 	return si
+}
+
+func ParseStreamID(stmID string) (StreamID, error) {
+	if stmID == "" {
+		return StreamID{}, fmt.Errorf("%w: %s", ErrInvalidStreamID, stmID)
+	}
+	splits := strings.Split(stmID, StreamIDPartsDelimiter)
+
+	return NewStreamID(splits[0], splits[1:]...), nil
 }
 
 // Store presents the transactional and strong-consistent side of the event store

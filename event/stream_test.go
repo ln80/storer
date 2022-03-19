@@ -30,6 +30,31 @@ func TestStreamID(t *testing.T) {
 	if ok := NewStreamID("gstmID").Global(); !ok {
 		t.Fatal("expect stream is global be true, got false")
 	}
+
+	stmID, err := ParseStreamID("gstmID#service")
+	if err != nil {
+		t.Fatalf("expect err be nil, got %v", err)
+	}
+	if want, val := "gstmID", stmID.GlobalID(); want != val {
+		t.Fatalf("expect %s, %s be equals", want, val)
+	}
+	if ok := stmID.Global(); ok {
+		t.Fatal("expect stream is global be false, got true")
+	}
+	stmID, err = ParseStreamID("gstmID")
+	if err != nil {
+		t.Fatalf("expect err be nil, got %v", err)
+	}
+	if want, val := "gstmID", stmID.GlobalID(); want != val {
+		t.Fatalf("expect %s, %s be equals", want, val)
+	}
+	if ok := stmID.Global(); !ok {
+		t.Fatal("expect stream is global, got false")
+	}
+
+	if _, err := ParseStreamID(""); !errors.Is(err, ErrInvalidStreamID) {
+		t.Fatalf("expect err be %v, got %v", ErrInvalidStreamID, err)
+	}
 }
 
 func TestStreamFilter(t *testing.T) {
