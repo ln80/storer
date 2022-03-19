@@ -30,8 +30,8 @@ func TypeOf(v interface{}) (vtype string) {
 func TypeOfWithNamspace(namespace string, v interface{}) string {
 	t := TypeOf(v)
 	if namespace != "" {
-		parts := strings.Split(t, ".")
-		return namespace + "." + parts[len(parts)-1]
+		splits := strings.Split(t, ".")
+		return namespace + "." + splits[len(splits)-1]
 	}
 	return t
 }

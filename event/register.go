@@ -86,8 +86,8 @@ func (r *register) Get(name string) (interface{}, error) {
 	defer regMu.Unlock()
 
 	if r.namespace != "" {
-		parts := strings.Split(name, ".")
-		eType, ok := registry[r.namespace][r.namespace+"."+parts[len(parts)-1]]
+		splits := strings.Split(name, ".")
+		eType, ok := registry[r.namespace][r.namespace+"."+splits[len(splits)-1]]
 		if ok {
 			return reflect.New(eType).Interface(), nil
 		}
