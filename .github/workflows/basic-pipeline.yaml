@@ -6,11 +6,11 @@ on:
       - init
     paths:
       - 'stacks/basic/**'
-  pull_request:
-    branches:
-      - init
-    paths:
-      - 'stacks/basic/**'
+  # pull_request:
+  #   branches:
+  #     - init
+  #   paths:
+  #     - 'stacks/basic/**'
 
 # defaults:
 #   run:
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Build Publish stack
     steps:
-    
+
       - name: Generate stack Name
         run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV
       
