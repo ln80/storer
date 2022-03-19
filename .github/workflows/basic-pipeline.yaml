@@ -20,6 +20,7 @@ jobs:
   build-deploy:
     runs-on: ubuntu-latest
     name: Build Publish stack
+    
     steps:
       - name: Generate stack Name
         run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV
@@ -54,7 +55,7 @@ jobs:
           make validate
       
       - name: Run unit tests
-       working-directory: ./stacks/basic
+        working-directory: ./stacks/basic
         run: |
           make test
         
@@ -67,19 +68,19 @@ jobs:
       # integration test only in case of push to branch
       - name: Deploy integration tests stack
         working-directory: ./stacks/basic
-        # if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' }}
         run: |
           make integration-test/deploy
 
       - name: Run integration tests
         working-directory: ./stacks/basic
-        # if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' }}
         run: |
           make integration-test/run
 
       # make sure to manually run the cmd after debugging failed tests
       - name: Clear integration tests resources
         working-directory: ./stacks/basic
-        # if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' }}
         run: |
           make integration-test/clear
