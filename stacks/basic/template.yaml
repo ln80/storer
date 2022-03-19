@@ -3,6 +3,19 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   Storer Basic Event Store
 
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: storer-event-store
+    Description: Serverless Event Store on top of DynamoDB and S3
+    Author: Reda Laanait
+    SpdxLicenseId: MIT
+    LicenseUrl: LICENSE.txt
+    ReadmeUrl: README.md
+    Labels: ['event-store', 'event-sourcing', 'dynamodb', 's3']
+    HomePageUrl: https://github.com/redaLaanait/storer/stacks/basic
+    SemanticVersion: 0.0.1
+    SourceCodeUrl: https://github.com/redaLaanait/storer/stacks/basic
+
 Globals:
   Function:
     Timeout: 5

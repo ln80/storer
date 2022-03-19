@@ -17,8 +17,11 @@ stackname:
 build:
 	sam build --cached
 
-# package:
-# 	sam package
+package:
+	sam package --output-template-file packaged.yaml --s3-bucket storer-packages
+
+publish:
+	sam publish --template packaged.yaml --region eu-west-1
 
 integration-test/deploy:
 	sam deploy \
