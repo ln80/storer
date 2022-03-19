@@ -6,11 +6,11 @@ on:
       - init
     paths:
       - 'stacks/basic/**'
-  # pull_request:
-  #   branches:
-  #     - init
-  #   paths:
-  #     - 'stacks/basic/**'
+  pull_request:
+    branches:
+      - init
+    paths:
+      - 'stacks/basic/**'
 
 # defaults:
 #   run:
@@ -61,7 +61,6 @@ jobs:
         
       - name: Build stack
         working-directory: ./stacks/basic
-        
         run: |
           make build
 

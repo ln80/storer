@@ -1,5 +1,5 @@
 
-.PHONY: validate, build, package, publish, test
+.PHONY: validate, build, package, publish, test, stackname
 
 TEST_ENV = test
 REGION = eu-west-1
