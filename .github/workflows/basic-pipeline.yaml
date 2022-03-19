@@ -6,18 +6,32 @@ on:
       - init
     paths:
       - 'stacks/basic/**'
-  
+  pull_request:
+    branches:
+      - init
+    paths:
+      - 'stacks/basic/**'
+
 # defaults:
 #   run:
     # working-directory: stacks/basic
+
+# GITHUB_EVENT_NAME
 
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate Stack Name
-        run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV && echo ${{ env.STACK_NAME }}
-     
+      - name: Generate stack Name
+        run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV
+      
+      - name: Display stack name
+        run: echo ${{ env.STACK_NAME }}
+
+      # remove step
+      - name: Display event name
+        run: echo ${{ github.event_name }}
+      
       - uses: actions/checkout@v2
       
       - name: Setup Go
@@ -28,30 +42,45 @@ jobs:
       - uses: aws-actions/setup-sam@v1
         with:
           version: 1.40.1
-      
+
       - uses: aws-actions/configure-aws-credentials@v1
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Validate sam template
+        working-directory: ./stacks/basic
+        run: |
+          make validate
+      
+      - name: Run unit tests
+       working-directory: ./stacks/basic
+        run: |
+          make test
+        
       - name: Build stack
         working-directory: ./stacks/basic
+        
         run: |
           make build
 
+      # integration test only in case of push to branch
       - name: Deploy integration tests stack
         working-directory: ./stacks/basic
+        if: ${{ github.event_name == 'push' }}
         run: |
           make integration-test/deploy
 
       - name: Run integration tests
         working-directory: ./stacks/basic
+        if: ${{ github.event_name == 'push' }}
         run: |
           make integration-test/run
 
       # make sure to manually run the cmd after debugging failed tests
       - name: Clear integration tests resources
         working-directory: ./stacks/basic
+        if: ${{ github.event_name == 'push' }}
         run: |
           make integration-test/clear

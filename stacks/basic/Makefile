@@ -1,5 +1,5 @@
 
-.PHONY: build, package
+.PHONY: validate, build, package, publish, test
 
 TEST_ENV = test
 REGION = eu-west-1
@@ -14,8 +14,14 @@ TEST_PARAMS = "AppPrefix=$(STACK_NAME)"
 stackname:
 	echo $(STACK_NAME)
 
+validate:
+	sam validate
+
 build:
 	sam build --cached
+
+test:
+	go test -race -cover ./...
 
 package:
 	sam package --output-template-file packaged.yaml --s3-bucket storer-packages
