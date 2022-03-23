@@ -11,10 +11,11 @@ import (
 	"github.com/redaLaanait/storer/event"
 )
 
-func TestInternal_GSTM(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping stream metadata test")
-	}
+func genGSTMTestEvt(ctx context.Context, stmID event.StreamID) event.Envelope {
+	return event.Envelop(ctx, stmID, []interface{}{struct{}{}})[0]
+}
+
+func TestGSTM(t *testing.T) {
 	ctx := context.Background()
 
 	withTable(t, dbsvc, func(table string) {
@@ -27,15 +28,30 @@ func TestInternal_GSTM(t *testing.T) {
 				HashKey:  gstmHashKey(),
 				RangeKey: gstmRangeKey(stmID),
 			},
-			UpdatedAt:   time.Now().UnixNano(),
-			Version:     ver.String(),
-			LastEventID: event.UID().String(),
+		}
+
+		// update gstm
+		if err := gstm0.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), ver); err != nil {
+			t.Fatalf("expect err be nil, got %v", err)
+		}
+
+		// test last active day record is acurate
+		if lastActiveDay := gstm0.LastActiveDay(time.Now()); lastActiveDay != nil {
+			t.Fatalf("expect last active day be nil, got %v", lastActiveDay)
+		}
+		if want, got :=
+			(&ActiveDay{
+				Day:     time.Now().Format("2006/01/02"),
+				Version: ver.String(),
+			}), gstm0.LastActiveDay(time.Now().AddDate(0, 0, 1)); !reflect.DeepEqual(want, got) {
+			t.Fatalf("expect %v, %v, be equals", want, got)
 		}
 
 		// test gstm not persited yet
 		if _, err := getGSTM(ctx, dbsvc, table, stmID); !errors.Is(err, ErrGSTMNotFound) {
 			t.Fatalf("expect err %v to occur, got: %v", ErrGSTMNotFound, err)
 		}
+
 		// test persist and find gstm
 		if err := persistGSTM(ctx, dbsvc, table, gstm0); err != nil {
 			t.Fatalf("expect persist gstm, got err: %v", err)
@@ -63,12 +79,13 @@ func TestInternal_GSTM(t *testing.T) {
 
 		// test move forward the stream checkpoint
 		gstm1 := gstm0
-		gstm1.Version = ver.Incr().String()
-		gstm1.LastEventID = event.UID().String()
-		gstm1.UpdatedAt = time.Now().UnixNano()
+		if err := gstm1.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), ver.Incr()); err != nil {
+			t.Fatalf("expect err be nil, got %v", err)
+		}
 		if err := persistGSTM(ctx, dbsvc, table, gstm1); err != nil {
 			t.Fatalf("expect persist gstm, got err: %v", err)
 		}
+
 		rgstm, err = getGSTM(ctx, dbsvc, table, stmID)
 		if err != nil {
 			t.Fatalf("expect find gstm, got err: %v", err)
@@ -100,10 +117,7 @@ func TestInternal_GSTM(t *testing.T) {
 	})
 }
 
-func TestInternal_GSTM_Batch(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping stream metadata test")
-	}
+func TestGSTM_Batch(t *testing.T) {
 	ctx := context.Background()
 
 	withTable(t, dbsvc, func(table string) {
@@ -135,12 +149,11 @@ func TestInternal_GSTM_Batch(t *testing.T) {
 			}
 		}
 
-		// test persist stms in batch
-		// populate init stms with valid data
+		// test persist gstms in batch
+		// populate init gstms with valid data
 		for _, stmID := range stmIDs {
-			initstms[stmID].Version = event.NewVersion().Incr().String()
-			initstms[stmID].LastEventID = event.UID().String()
-			initstms[stmID].UpdatedAt = time.Now().UnixNano()
+			initstms[stmID].Update(
+				genGSTMTestEvt(ctx, event.NewStreamID(stmID)), event.NewVersion().Incr())
 		}
 		if err := persistGSTMBatch(ctx, dbsvc, table, initstms); err != nil {
 			t.Fatalf("expect err be nil, got err: %v", err)
@@ -158,18 +171,18 @@ func TestInternal_GSTM_Batch(t *testing.T) {
 			t.Fatal("expect gstms be equal, got: ", *stm0, *rstm0)
 		}
 
-		// test partial stm update
-		// corrupt the last stream and check that previous ones are correctly updated
-		corruptstmID := stmIDs[len(stmIDs)-1]
+		// test partial gstms update
+		// corrupt the last gstm and check that previous ones are correctly updated
+		corruptedstmID := stmIDs[len(stmIDs)-1]
 		for stmID := range initstms {
-			if stmID == corruptstmID {
+			if stmID == corruptedstmID {
 				continue
 			}
-			initstms[stmID].Version = event.NewVersion().Incr().String()
-			initstms[stmID].LastEventID = event.UID().String()
-			initstms[stmID].UpdatedAt = time.Now().UnixNano()
+			initstms[stmID].Update(
+				genGSTMTestEvt(ctx, event.NewStreamID(stmID)), event.NewVersion().Incr())
 		}
-		initstms[corruptstmID].Version = event.VersionZero.String()
+		initstms[corruptedstmID].Version = event.VersionZero.String()
+
 		if err = persistGSTMBatch(ctx, dbsvc, table, initstms); err == nil {
 			t.Errorf("expect err %v, got nil", ErrValidateGSTMFailed)
 		}
@@ -181,14 +194,14 @@ func TestInternal_GSTM_Batch(t *testing.T) {
 		}
 
 		for stmID, stm := range initstms {
-			if stmID == corruptstmID {
+			if stmID == corruptedstmID {
 				if reflect.DeepEqual(stm, rstms2[stmID]) {
 					t.Fatal("expect gstms be not equal")
 				}
 				continue
 			}
-			if *stm != *initstms[stmID] {
-				t.Fatalf("expect gstms be equal, got %v, %v", *stm, *initstms[stmID])
+			if reflect.DeepEqual(*stm, initstms[stmID]) {
+				t.Fatalf("expect gstms be equal, got %v, %v", spew.Sdump(stm), spew.Sdump((initstms[stmID])))
 			}
 		}
 	})

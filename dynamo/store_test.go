@@ -8,10 +8,6 @@ import (
 )
 
 func TestEventStore(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping event store test")
-	}
-
 	ctx := context.Background()
 
 	withTable(t, dbsvc, func(table string) {
@@ -20,10 +16,6 @@ func TestEventStore(t *testing.T) {
 }
 
 func TestEventSourcingStore(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping event sourcing store test")
-	}
-
 	ctx := context.Background()
 
 	withTable(t, dbsvc, func(table string) {

@@ -67,7 +67,7 @@ func TestEventForwarder(t *testing.T) {
 		t.Run("test forward invalid record case 1", func(t *testing.T) {
 			gstmID := event.UID().String()
 
-			fwd := NewForwarder(dbsvc, table, &persisterMock{}, &publisherMock{}, ser)
+			fwd := NewForwarder(dbsvc, table, &persisterMock{}, &publisherMock{})
 
 			evtAt := time.Now()
 			nokEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
@@ -94,7 +94,7 @@ func TestEventForwarder(t *testing.T) {
 		t.Run("test forward invalid record case 2", func(t *testing.T) {
 			gstmID := event.UID().String()
 
-			fwd := NewForwarder(dbsvc, table, &persisterMock{}, &publisherMock{}, ser)
+			fwd := NewForwarder(dbsvc, table, &persisterMock{}, &publisherMock{})
 
 			evtAt := time.Now().Add(-10 * time.Hour)
 			okEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
@@ -137,7 +137,7 @@ func TestEventForwarder(t *testing.T) {
 		t.Run("test forward correctable invalid record", func(t *testing.T) {
 			gstmID := event.UID().String()
 
-			fwd := NewForwarder(dbsvc, table, &persisterMock{}, &publisherMock{}, ser)
+			fwd := NewForwarder(dbsvc, table, &persisterMock{}, &publisherMock{})
 
 			evtAt := time.Now()
 			okEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
@@ -164,7 +164,7 @@ func TestEventForwarder(t *testing.T) {
 			per := &persisterMock{
 				err: errors.New("persist error"),
 			}
-			fwd := NewForwarder(dbsvc, table, per, &publisherMock{}, ser)
+			fwd := NewForwarder(dbsvc, table, per, &publisherMock{})
 
 			evtAt := time.Now()
 			okEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
@@ -193,7 +193,7 @@ func TestEventForwarder(t *testing.T) {
 			pub := &publisherMock{
 				err: errors.New("publish error"),
 			}
-			fwd := NewForwarder(dbsvc, table, &persisterMock{}, pub, ser)
+			fwd := NewForwarder(dbsvc, table, &persisterMock{}, pub)
 
 			evtAt := time.Now()
 			okEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
@@ -221,7 +221,7 @@ func TestEventForwarder(t *testing.T) {
 
 			per := &persisterMock{}
 			pub := &publisherMock{}
-			fwd := NewForwarder(dbsvc, table, per, pub, ser)
+			fwd := NewForwarder(dbsvc, table, per, pub)
 
 			evtAt := time.Now()
 			okEnvs := event.Envelop(ctx, event.NewStreamID(gstmID), []interface{}{
@@ -273,7 +273,7 @@ func TestEventForwarder(t *testing.T) {
 			// check idempotency
 			per = &persisterMock{}
 			pub = &publisherMock{}
-			fwd = NewForwarder(dbsvc, table, per, pub, ser)
+			fwd = NewForwarder(dbsvc, table, per, pub)
 
 			err = fwd.Forward(ctx, []Record{
 				makeRecord(ser, gstmID, okEnvs),

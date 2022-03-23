@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,14 +24,26 @@ var (
 	ErrGSTMNotFound          = errors.New("global stream not found")
 )
 
+const (
+	activeDayMaxRecords = 5
+)
+
+type ActiveDay struct {
+	Day, Version string
+}
+
+// GSTM defines the global stream infos mainly checkpoint related ones.
 type GSTM struct {
 	Item
 	StreamID    string `dynamodbav:"stmID"`
 	Version     string `dynamodbav:"gver"`
-	LastEventID string `dynamodbav:"levtID"`
+	LastEventID string `dynamodbav:"evtID"`
 	UpdatedAt   int64  `dynamodbav:"uat"`
+
+	LastActiveDays map[string]ActiveDay `dynamodbav:"activeDays"`
 }
 
+// Validate the global stream infos
 func (gstm GSTM) Validate() error {
 	if gstm.StreamID == "" {
 		return event.Err(ErrValidateGSTMFailed, gstm.StreamID, "empty streamID")
@@ -41,10 +54,68 @@ func (gstm GSTM) Validate() error {
 	if gstm.LastEventID == "" {
 		return event.Err(ErrValidateGSTMFailed, gstm.StreamID, "empty lastEventID")
 	}
-	if gstm.UpdatedAt < 0 {
+	if gstm.UpdatedAt <= 0 {
 		return event.Err(ErrValidateGSTMFailed, gstm.StreamID, "empty updatedAt")
 	}
 	return nil
+}
+
+// Update the global stream checkpoint related infos.
+// It also keeps records of previous active days version.
+func (gstm *GSTM) Update(evt event.Envelope, ver event.Version) error {
+	// update checkpoint infos
+	gstm.LastEventID = evt.ID()
+	gstm.Version = ver.String()
+	gstm.UpdatedAt = evt.At().UnixNano()
+
+	// init last active days record map if needed
+	if gstm.LastActiveDays == nil {
+		gstm.LastActiveDays = map[string]ActiveDay{}
+	}
+
+	day := time.Unix(0, gstm.UpdatedAt).Format("2006/01/02")
+	gstm.LastActiveDays[day] = ActiveDay{
+		Day:     day,
+		Version: ver.String(),
+	}
+
+	// remove old day from record if max record exceeded
+	if l := len(gstm.LastActiveDays); l > activeDayMaxRecords {
+		days := make([]string, 0, l)
+		for day := range gstm.LastActiveDays {
+			days = append(days, day)
+		}
+		sort.Strings(days)
+		delete(gstm.LastActiveDays, days[0])
+	}
+
+	// TODO enforce gstm's invariants rather than post validate
+	return gstm.Validate()
+}
+
+// LastActiveDay returns the stream version of the last active day before the given date.
+// It returns nil if not found.
+func (gstm *GSTM) LastActiveDay(before time.Time) *ActiveDay {
+	if gstm.LastActiveDays == nil {
+		return nil
+	}
+
+	days := make([]string, 0)
+	for day := range gstm.LastActiveDays {
+		if day < before.Format("2006/01/02") {
+			days = append(days, day)
+		}
+	}
+
+	dl := len(days)
+	if dl == 0 {
+		return nil
+	}
+
+	sort.Strings(days)
+	laday := gstm.LastActiveDays[days[dl-1]]
+
+	return &laday
 }
 
 func gstmHashKey() string {
@@ -55,6 +126,7 @@ func gstmRangeKey(stmID string) string {
 	return strings.Join([]string{"gstm", stmID}, "#")
 }
 
+// persistGSTM to the dynamodb store in batch
 func persistGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, gstms map[string]*GSTM) error {
 	if len(gstms) == 0 {
 		return nil
@@ -70,6 +142,8 @@ func persistGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, gstms 
 	return nil
 }
 
+// persistGSTM to the dynamodb store.
+// Note that it's idempotent
 func persistGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstm GSTM) error {
 	if err := gstm.Validate(); err != nil {
 		return err
@@ -106,12 +180,13 @@ func persistGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstm GSTM) 
 				WithUpdate(
 					expression.
 						Set(expression.Name("gver"), expression.Value(gstm.Version)).
-						Set(expression.Name("levtID"), expression.Value(gstm.LastEventID)).
-						Set(expression.Name("uat"), expression.Value(gstm.UpdatedAt)),
+						Set(expression.Name("evtID"), expression.Value(gstm.LastEventID)).
+						Set(expression.Name("uat"), expression.Value(gstm.UpdatedAt)).
+						Set(expression.Name("activeDays"), expression.Value(gstm.LastActiveDays)),
 				).WithCondition(
 				expression.
 					Not(expression.
-						Equal(expression.Name("levtID"), expression.Value(gstm.LastEventID))).
+						Equal(expression.Name("evtID"), expression.Value(gstm.LastEventID))).
 					And(
 						expression.LessThan(expression.Name("gver"), expression.Value(gstm.Version)),
 					),
@@ -140,6 +215,8 @@ func persistGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstm GSTM) 
 	return nil
 }
 
+// getGSTM returns the global stream infos.
+// It returns error if gstm does not exists
 func getGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstmID string) (*GSTM, error) {
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(
@@ -175,11 +252,13 @@ func getGSTM(ctx context.Context, dbsvc ClientAPI, table string, gstmID string) 
 	return &items[0], nil
 }
 
+// GSTMFilter define the filter used to query global streams
 type GSTMFilter struct {
 	StreamIDs    []string
 	UpdatedAfter time.Time
 }
 
+// build the query gstms filter, and set default filter values.
 func (f GSTMFilter) build() (filter expression.ConditionBuilder) {
 	var idsF, updatedF expression.ConditionBuilder
 	if l := len(f.StreamIDs); l > 0 {
@@ -203,6 +282,7 @@ func (f GSTMFilter) build() (filter expression.ConditionBuilder) {
 	return
 }
 
+// getGSTMBatch return a list of global streams infos as a map index by the gstm ID.
 func getGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, f GSTMFilter) (map[string]*GSTM, error) {
 	b := expression.NewBuilder().
 		WithKeyCondition(

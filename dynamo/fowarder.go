@@ -5,30 +5,46 @@ import (
 
 	"github.com/redaLaanait/storer/event"
 	intevent "github.com/redaLaanait/storer/internal/event"
+	"github.com/redaLaanait/storer/json"
 )
 
-// Forwarder presents the service responsible for forwarding event records from the dynamodb stream
-// to a permanent store, and push-based workers/projectors
+// Forwarder defines the service responsible for forwarding events from the dynamodb change stream
+// to a permanent store and push-based workers/projectors.
 type Forwarder interface {
 	Forward(ctx context.Context, recs []Record) error
 }
 
 type forwarder struct {
-	svc        ClientAPI
-	table      string
-	serializer event.Serializer
-	persister  intevent.Persister
-	publisher  event.Publisher
+	svc       ClientAPI
+	table     string
+	persister intevent.Persister
+	publisher event.Publisher
+	*ForwarderConfig
 }
 
-func NewForwarder(dbsvc ClientAPI, table string, per intevent.Persister, pub event.Publisher, ser event.Serializer) Forwarder {
-	return &forwarder{
-		svc:        dbsvc,
-		table:      table,
-		persister:  per,
-		publisher:  pub,
-		serializer: ser,
+type ForwarderConfig struct {
+	Serializer event.Serializer
+}
+
+func NewForwarder(dbsvc ClientAPI, table string, per intevent.Persister, pub event.Publisher, opts ...func(cfg *ForwarderConfig)) Forwarder {
+	fwd := &forwarder{
+		svc:       dbsvc,
+		table:     table,
+		persister: per,
+		publisher: pub,
+		ForwarderConfig: &ForwarderConfig{
+			Serializer: json.NewEventSerializer(""),
+		},
 	}
+
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		opt(fwd.ForwarderConfig)
+	}
+
+	return fwd
 }
 
 func (f *forwarder) Forward(ctx context.Context, recs []Record) error {
@@ -71,11 +87,13 @@ func (f *forwarder) Forward(ctx context.Context, recs []Record) error {
 	return nil
 }
 
+// checkpoint iterates over the given records, enrich their events by setting the global version,
+// and maintains the related global stream checkpoint.
 func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[string][]event.Envelope, error) {
 	mevs := make(map[string][]event.Envelope)
 
 	for _, r := range recs {
-		evts, err := f.serializer.UnmarshalEventBatch(r.Events)
+		evts, err := f.Serializer.UnmarshalEventBatch(r.Events)
 		if err != nil {
 			return nil, err
 		}
@@ -95,10 +113,12 @@ func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[strin
 
 		ver, _ := event.ParseVersion(gstm.Version)
 		for _, ev := range evts {
-			gstm.LastEventID = ev.ID()
-			gstm.UpdatedAt = ev.At().UnixNano()
-
 			ver = ver.Incr()
+
+			if err := gstm.Update(ev, ver); err != nil {
+				return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, err)
+			}
+
 			rev, ok := ev.(interface {
 				event.Envelope
 				SetGlobalVersion(v event.Version) event.Envelope
@@ -109,7 +129,6 @@ func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[strin
 			rev.SetGlobalVersion(ver)
 			mevs[gstmID] = append(mevs[gstmID], rev)
 		}
-		gstm.Version = ver.String()
 	}
 
 	for gstmID, evs := range mevs {

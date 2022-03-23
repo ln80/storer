@@ -8,6 +8,8 @@ import (
 )
 
 type monitor struct {
+	signal.Monitor
+
 	svc   ClientAPI
 	table string
 }
@@ -21,6 +23,8 @@ func NewMonitor(dbsvc ClientAPI, table string) signal.Monitor {
 	}
 }
 
+// ActiveStreams implements ActiveStreams method of signal.Monitor interface.
+// It generates signal based on the current state of gstms.
 func (m *monitor) ActiveStreams(ctx context.Context, since time.Time) ([]*signal.ActiveStream, error) {
 	gstms, err := getGSTMBatch(ctx, m.svc, m.table, GSTMFilter{
 		UpdatedAfter: since,
@@ -31,7 +35,17 @@ func (m *monitor) ActiveStreams(ctx context.Context, since time.Time) ([]*signal
 	sigs := make([]*signal.ActiveStream, 0, len(gstms))
 	for _, gstm := range gstms {
 		gstm := gstm
-		sigs = append(sigs, signal.ActiveStreamSignal(gstm.StreamID, gstm.UpdatedAt, time.Now().UnixNano()))
+		sig := signal.ActiveStreamSignal(
+			gstm.StreamID,
+			gstm.Version,
+			gstm.UpdatedAt,
+			time.Now().UnixNano(),
+		)
+		// enrich signal with last active day info if it exists
+		if day := gstm.LastActiveDay(since); day != nil {
+			sig.SetLastActiveDay(day.Day, day.Version)
+		}
+		sigs = append(sigs, sig)
 	}
 	return sigs, nil
 }

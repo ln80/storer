@@ -55,41 +55,38 @@ func recordRangeKeyWithVersion(stmID event.StreamID, ver event.Version) string {
 }
 
 var (
-	_ event.Store    = &store{}
-	_ sourcing.Store = &store{}
+	_ eventStore = &store{}
 )
 
-type StoreConfig struct {
-	serializer event.Serializer
+type eventStore interface {
+	event.Store
+	sourcing.Store
 }
 
+type StoreConfig struct {
+	Serializer event.Serializer
+}
+
+// store implements both event.Store and sourcing.Store
 type store struct {
 	svc   ClientAPI
 	table string
 
 	*StoreConfig
 
-	mu         sync.RWMutex
+	mu sync.RWMutex
+
+	// an in-memory checkpoint used to control versionned-streams (aka event sourcing streams...)
 	checkpoint map[string]string
 }
 
-type StoreOption func(s *StoreConfig)
-
-func WithSerializer(ser event.Serializer) StoreOption {
-	return func(s *StoreConfig) {
-		s.serializer = ser
-	}
-}
-
-func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) interface {
-	event.Store
-	sourcing.Store
-} {
+// NewEventStore a dynamodb implementation of both event.Store and sourcing.Store
+func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) eventStore {
 	s := &store{
 		svc:   svc,
 		table: table,
 		StoreConfig: &StoreConfig{
-			serializer: json.NewEventSerializer(""),
+			Serializer: json.NewEventSerializer(""),
 		},
 
 		checkpoint: make(map[string]string),
@@ -104,6 +101,7 @@ func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) inte
 	return s
 }
 
+// AppendToStream implements event.Store interface
 func (s *store) Append(ctx context.Context, id event.StreamID, evts ...event.Envelope) error {
 	if len(evts) == 0 {
 		return nil
@@ -115,6 +113,7 @@ func (s *store) Append(ctx context.Context, id event.StreamID, evts ...event.Env
 	return s.doAppend(ctx, id, nil, evts, keysFn)
 }
 
+// AppendToStream implements event.Store interface
 func (s *store) Load(ctx context.Context, id event.StreamID, trange ...time.Time) ([]event.Envelope, error) {
 	var since, until, msince, muntil time.Time
 	l := len(trange)
@@ -163,7 +162,8 @@ func (s *store) AppendToStream(ctx context.Context, stm sourcing.Stream) (err er
 	if err = stm.Validate(); err != nil {
 		return
 	}
-	// update the stream in-memory checkpoint if the new chunk is succesfully appended
+
+	// update stream in-memory checkpoint if the new chunk, only is succesfully appended
 	defer func() {
 		if err == nil {
 			s.checkVersion(stm.ID(), stm.Version())
@@ -175,16 +175,17 @@ func (s *store) AppendToStream(ctx context.Context, stm sourcing.Stream) (err er
 	keysFn := func() (string, string) {
 		return recordHashKey(id), recordRangeKeyWithVersion(stm.ID(), ver)
 	}
-	// "check previous record" + "save new chunk" op is not transactional, and we suppose the store table is immutable
-	// a dirty read may occur if table is somehow corrupted/updated during the append call
-	// we ignore "check previous record exists" if the chunk to append is supposed being the first in the stream
+	// we ignore "check previous record exists" if the chunk to append is supposed to be the first.
 	if ver.Trunc().After(event.VersionMin) {
+		// "check previous record" + "save new chunk" operations are not transactional,
+		// and we suppose the store table is immutable
+		// a dirty read may occur if table is somehow corrupted/updated between
 		if err = s.previousRecordExists(ctx, id, ver); err != nil {
 			return err
 		}
 	}
-	// doAppend still perform another check to ensure the chunk to append's version does not already exist
-	// although doAppend does not guarantees the previous record aka chunk exist
+	// doAppend still perform another check to ensure the chunk version does not already exist
+	// although doAppend does not guarantees chunks versions are in sequence.
 	err = s.doAppend(ctx, id, &ver, stm.Unwrap(), keysFn)
 	return
 }
@@ -200,7 +201,7 @@ func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...eve
 		from, to = event.VersionMin, event.VersionMax
 	}
 
-	// update the stream memory checkpoint if last records of the stream are successfully loaded
+	// update the stream in-memory checkpoint if lastest stream events are successfully loaded
 	if to == event.VersionMax {
 		defer func() {
 			if err == nil {
@@ -241,7 +242,7 @@ func (s *store) checkVersion(id event.StreamID, ver event.Version) {
 	s.checkpoint[id.String()] = ver.String()
 }
 
-// lastCheckedVersion returns the given stream current version from the memory cache if it exists.
+// lastCheckedVersion returns the given stream's current version from the memory cache if it exists.
 func (s *store) lastCheckedVersion(id event.StreamID) (ver string, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -264,7 +265,6 @@ CHECK_PREVIOUS_RECORD:
 		if prever.String() == lastver {
 			return nil
 		}
-
 		// coming to point where cache is refreshed but prev ver still ahead means the vertoAppend is not in sequence
 		if prever.String() < lastver || cacheUpdated {
 			return event.Err(event.ErrAppendEventsFailed, id.String(), "invalid chunk version, it must be next to previous record version: "+prever.String())
@@ -319,7 +319,7 @@ func (s *store) doAppend(ctx context.Context, id event.StreamID, ver *event.Vers
 		ses = NewSession(s.svc)
 	}
 
-	b, err := s.serializer.MarshalEventBatch(evts)
+	b, err := s.Serializer.MarshalEventBatch(evts)
 	if err != nil {
 		return event.Err(event.ErrAppendEventsFailed, id.String(), err)
 	}
@@ -371,6 +371,8 @@ func (s *store) doAppend(ctx context.Context, id event.StreamID, ver *event.Vers
 	return nil
 }
 
+// doLoad works for both version and timestamp based streams.
+// it loads and unmarshals events from the dynamodb table.
 func (s *store) doLoad(ctx context.Context, id event.StreamID, from, to string) ([]event.Envelope, error) {
 	expr, err := expression.
 		NewBuilder().
@@ -408,7 +410,7 @@ func (s *store) doLoad(ctx context.Context, id event.StreamID, from, to string) 
 
 	envs := []event.Envelope{}
 	for _, r := range records {
-		chunk, err := s.serializer.UnmarshalEventBatch(r.Events)
+		chunk, err := s.Serializer.UnmarshalEventBatch(r.Events)
 		if err != nil {
 			return nil, event.Err(event.ErrLoadEventFailed, id.String(), err)
 		}
