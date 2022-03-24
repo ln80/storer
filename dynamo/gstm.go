@@ -304,11 +304,6 @@ func getGSTMBatch(ctx context.Context, dbsvc ClientAPI, table string, f GSTMFilt
 		return nil, event.Err(ErrUnexpectedGSTMFailure, strIDs, err)
 	}
 
-	// fmt.Printf("ConditionExpression: %s\n", spew.Sdump(expr.Condition()))
-	// fmt.Printf("Names: %s\n", spew.Sdump(expr.Names()))
-	// fmt.Printf("Values: %s\n", spew.Sdump(expr.Values()))
-	// fmt.Printf("Update Expression: %q\n", aws.ToString(expr.Update()))
-
 	out, err := dbsvc.Query(ctx, &dynamodb.QueryInput{
 		TableName:                 aws.String(table),
 		KeyConditionExpression:    expr.KeyCondition(),

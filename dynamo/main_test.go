@@ -73,9 +73,7 @@ func TestMain(m *testing.M) {
 		o.EndpointResolver = dynamodb.EndpointResolverFromURL(endpoint)
 	})
 
-	event.NewRegister("").
-		Set(testutil.Event1{}).
-		Set(testutil.Event2{})
+	testutil.RegisterEvent("")
 
 	os.Exit(m.Run())
 }

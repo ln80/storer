@@ -24,7 +24,7 @@ func NewMonitor(dbsvc ClientAPI, table string) signal.Monitor {
 }
 
 // ActiveStreams implements ActiveStreams method of signal.Monitor interface.
-// It generates signal based on the current state of gstms.
+// It generates ActiveStreams signals based on the current state of gstms.
 func (m *monitor) ActiveStreams(ctx context.Context, since time.Time) ([]*signal.ActiveStream, error) {
 	gstms, err := getGSTMBatch(ctx, m.svc, m.table, GSTMFilter{
 		UpdatedAfter: since,

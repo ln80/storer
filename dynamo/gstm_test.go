@@ -96,11 +96,12 @@ func TestGSTM(t *testing.T) {
 
 		// test de-increment the checkpoint
 		gstm02 := gstm1
-		gstm02.Version = ver.String()
-		gstm02.LastEventID = event.UID().String()
-		gstm02.UpdatedAt = time.Now().UnixNano()
+		// gstm02.Version = ver.String()
+		// gstm02.LastEventID = event.UID().String()
+		// gstm02.UpdatedAt = time.Now().UnixNano()
+		gstm02.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), ver)
 
-		// the write must fail and be ignored i.e return nil
+		// the write must fail and be ignored
 		if err := persistGSTM(ctx, dbsvc, table, gstm02); err != nil {
 			t.Fatalf("expect persist gstm, got err: %v", err)
 		}
@@ -112,7 +113,7 @@ func TestGSTM(t *testing.T) {
 			t.Fatal("expect gstms not be equal, got:", spew.Sdump(gstm02), spew.Sdump(rgstm))
 		}
 		if !reflect.DeepEqual(&gstm1, rgstm) {
-			t.Fatal("expect gstms be equal, got:", spew.Sdump(gstm02), spew.Sdump(rgstm))
+			t.Fatal("expect gstms be equal, got:", spew.Sdump(gstm1), spew.Sdump(rgstm))
 		}
 	})
 }
@@ -150,7 +151,8 @@ func TestGSTM_Batch(t *testing.T) {
 		}
 
 		// test persist gstms in batch
-		// populate init gstms with valid data
+
+		// populate initial gstms with valid data
 		for _, stmID := range stmIDs {
 			initstms[stmID].Update(
 				genGSTMTestEvt(ctx, event.NewStreamID(stmID)), event.NewVersion().Incr())
