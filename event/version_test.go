@@ -50,14 +50,17 @@ func TestVersion_Basic(t *testing.T) {
 		t.Fatalf("expect ver %v gth %v", ver, VersionMax)
 	}
 
-	_, err := Ver("")
-	if !errors.Is(err, ErrVersionMalformed) {
-		t.Fatalf("expect err be: %v nil, got nil", ErrVersionMalformed)
+	ver, err := Ver("")
+	if err != nil {
+		t.Fatalf("expect err be nil, got %v", err)
+	}
+	if ver != VersionZero {
+		t.Fatalf("expect versions %v, %v be equals", ver, VersionZero)
 	}
 
 	_, err = Ver("invalid")
 	if !errors.Is(err, ErrVersionMalformed) {
-		t.Fatalf("expect err be: %v nil, got nil", ErrVersionMalformed)
+		t.Fatalf("expect err be: %v, got nil", ErrVersionMalformed)
 	}
 
 	ver, err = Ver()
@@ -82,11 +85,7 @@ func TestVersion_Parse(t *testing.T) {
 		ok  bool
 		err error
 	}{
-		{
-			str: "",
-			ok:  false,
-			err: ErrVersionMalformed,
-		},
+
 		{
 			str: "invalid version",
 			ok:  false,
@@ -123,6 +122,10 @@ func TestVersion_Parse(t *testing.T) {
 			err: ErrVersionMalformed,
 		},
 		{
+			str: "",
+			ok:  true,
+		},
+		{
 			str: VerZeroStr,
 			ok:  true,
 		},
@@ -155,7 +158,8 @@ func TestVersion_Parse(t *testing.T) {
 				if err != nil {
 					t.Fatalf("expect parse version, got err %v", err)
 				}
-				if ver.String() != tc.str {
+				zeroCaseCond := tc.str == "" && ver.String() == VerZeroStr
+				if ver.String() != tc.str && !zeroCaseCond {
 					t.Fatalf("expect ver strings %v, %v be equals", ver, tc.str)
 				}
 			} else {

@@ -66,7 +66,7 @@ func Ver(str ...string) (Version, error) {
 	if len(str) > 0 {
 		return ParseVersion(str[0])
 	}
-	return NewVersion(), nil
+	return VersionMin, nil
 }
 
 func NewVersion() Version {
@@ -74,8 +74,12 @@ func NewVersion() Version {
 }
 
 func ParseVersion(vstr string) (Version, error) {
-	v := Version{}
 	l := len(vstr)
+	if l == 0 {
+		return VersionZero, nil
+	}
+
+	v := Version{}
 	if l%20 != 11 || vstr[l-11:l-10] != "." {
 		return v, fmt.Errorf("%w: %s", ErrVersionMalformed, vstr)
 	}
