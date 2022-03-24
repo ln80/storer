@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/redaLaanait/storer/event"
 	"github.com/redaLaanait/storer/testutil"
 )
 
@@ -36,15 +35,15 @@ func withBucket(t *testing.T, s3svc AdminAPI, tfn func(bucket string)) {
 	ctx := context.Background()
 
 	bucket := "test-bucket"
-	if err := CreateBucket(ctx, s3svc, bucket); err != nil {
+	if err := createBucket(ctx, s3svc, bucket); err != nil {
 		t.Fatalf("failed to create test event bucket: %v", err)
 	}
 
-	defer func() {
-		// 	if err := DeleteBucket(ctx, s3svc, bucket); err != nil {
-		// 		t.Fatalf("failed to clean aka remove test event bucket: %v", err)
-		// 	}
-	}()
+	// defer func() {
+	// 	if err := deleteBucket(ctx, s3svc, bucket); err != nil {
+	// 		t.Fatalf("failed to clean aka remove test event bucket: %v", err)
+	// 	}
+	// }()
 
 	tfn(bucket)
 }
@@ -64,9 +63,7 @@ func TestMain(m *testing.M) {
 
 	s3svc = s3.NewFromConfig(cfg)
 
-	event.NewRegister("").
-		Set(testutil.Event1{}).
-		Set(testutil.Event2{})
+	testutil.RegisterEvent("")
 
 	os.Exit(m.Run())
 }

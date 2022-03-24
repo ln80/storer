@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/redaLaanait/storer/event"
 	intevent "github.com/redaLaanait/storer/internal/event"
+	"github.com/redaLaanait/storer/internal/timeutil"
 	"github.com/redaLaanait/storer/json"
 	"golang.org/x/sync/errgroup"
 )
@@ -42,10 +43,13 @@ var objectKeyReg = regexp.MustCompile(
 	"(\\w+)\\/(\\w+)\\/(\\w+)\\/(\\w+)\\/(\\w+)\\/v(\\w+\\.\\w+)_(\\w+\\.\\w+)\\.(\\w+)",
 )
 
-func objectkey(stmID, root, ext string, date time.Time, fromVersion, toVersion event.Version) string {
+// objectkey returns the key of the s3 object used for saving a chunk or a partition of events
+func objectKey(stmID, root, ext string, date time.Time, fromVersion, toVersion event.Version) string {
 	return fmt.Sprintf("%s/%s/%s/v%s_%s.%s", root, stmID, date.Format("2006/01/02"), fromVersion.String(), toVersion.String(), ext)
 }
 
+// parseObjectKey parses the object key and returns information about the chunk / partition.
+// It may return an error if key format is invalid.
 func parseObjectKey(key string) (root, stmID, day, fromVersion, toVersion, ext string, err error) {
 	parts := objectKeyReg.FindStringSubmatch(key)
 	if len(parts) != 9 {
@@ -66,16 +70,17 @@ func parseObjectKey(key string) (root, stmID, day, fromVersion, toVersion, ext s
 	return
 }
 
-func listObjectsRange(stmID, root, ext string, f event.StreamFilter) (prefix, minKey, maxKey string) {
+// objectsRangeKeys returns the boundary keys of a range of chunks/partition object based on the given filter.
+func objectsRangeKeys(stmID, root, ext string, f event.StreamFilter) (prefix, fromKey, toKey string) {
 	f.Build()
-
 	prefix = fmt.Sprintf("%s/%s/", root, stmID)
-	minKey = objectkey(stmID, root, ext, f.Since, f.From, f.From)
-	maxKey = objectkey(stmID, root, ext, f.Until, f.To, f.To)
+	fromKey = objectKey(stmID, root, ext, f.Since, f.From, f.From)
+	toKey = objectKey(stmID, root, ext, f.Until, f.To, f.To)
 	return
 }
 
-func concatRangeKey(mroot, from, to string) (key string, err error) {
+// mergeRangeKey returns the key of the object that contains the merge of chunks
+func mergeRangeKey(mroot, from, to string) (key string, err error) {
 	if len(from) == 0 || len(to) == 0 {
 		err = event.Err(ErrStreamInvalidRangeKeys, "", fmt.Sprintf("keys: (%s, %s)", from, to))
 		return
@@ -104,14 +109,15 @@ func concatRangeKey(mroot, from, to string) (key string, err error) {
 	}
 	day, err := time.Parse("2006/01/02", day1)
 	if err != nil {
-		err = event.Err(ErrStreamInvalidRangeKeys, "", err.Error())
+		err = event.Err(ErrStreamInvalidRangeKeys, stm1, err.Error())
 		return
 	}
 
-	key = objectkey(stm1, mroot, ext1, day, vf, vt)
+	key = objectKey(stm1, mroot, ext1, day, vf, vt)
 	return
 }
 
+// makeObjectQuery returns the object SQL query to stream event from the object
 func makeObjectQuery(provider string, filter event.StreamFilter) (query string) {
 	// Hack: seems that Minio and S3 SQL are not compatible
 	query = `SELECT * from`
@@ -122,58 +128,89 @@ func makeObjectQuery(provider string, filter event.StreamFilter) (query string) 
 	}
 	query += fmt.Sprintf(` as ev
 		WHERE
-			ev.GVersion BETWEEN '%s' AND '%s'
+			ev.GVer BETWEEN '%s' AND '%s'
 			AND
 			ev.At BETWEEN %d AND %d
 
-	`,
-		filter.From.String(), filter.To.String(), filter.Since.UnixNano(), filter.Until.UnixNano())
+	`, filter.From.String(), filter.To.String(), filter.Since.UnixNano(), filter.Until.UnixNano())
 
 	return query
 }
 
-// StreamMerger presents the service that merge event chunks into partition.
+// streamMerger presents the service that merge event chunks into partition.
 // At this stage I see it as a specific interface of S3 package, but it may moves to internal package.
-type StreamMerger interface {
-	MergeChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error
+type streamMerger interface {
+	mergeDailyChunks(ctx context.Context, stmID event.StreamID, date time.Time, currVer, lastActiveDayVer event.Version) (ignored bool, err error)
 }
 
-// StreamManager presents the all on in one interface for s3 stream related operations
-type StreamManager interface {
+// StreamMaintainer defines the all on in one interface for s3 stream
+type StreamMaintainer interface {
+	// Streamer is part of the public API, it allows replaying the stream of events.
 	event.Streamer
-	intevent.Persister
-	StreamMerger
+
+	streamMerger
 }
 
 var (
-	_ StreamManager = &streamMgr{}
+	_ StreamMaintainer   = &streamer{}
+	_ intevent.Persister = &streamer{}
 )
 
-type streamMgr struct {
+func newStreamService(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)) *streamer {
+	if svc == nil {
+		panic("streamer  invalid S3 client: nil value")
+	}
+
+	stmer := &streamer{
+		svc:    svc,
+		bucket: bucket,
+		StreamerConfig: &StreamerConfig{
+			Provider:               ProviderS3,
+			ResumeWithLatestChunks: true,
+			Serializer:             json.NewEventSerializer(""),
+			PartitionMinSize:       100000,
+		},
+	}
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		opt(stmer.StreamerConfig)
+	}
+
+	return stmer
+}
+
+func NewStreamer(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)) event.Streamer {
+	return newStreamService(svc, bucket, opts...)
+}
+
+func NewStreamePersister(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)) intevent.Persister {
+	return newStreamService(svc, bucket, opts...)
+}
+
+func NewStreamMaintainer(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)) StreamMaintainer {
+	return newStreamService(svc, bucket, opts...)
+}
+
+type streamer struct {
 	bucket string
 
 	svc ClientAPI
-
-	serializer event.Serializer
 
 	*StreamerConfig
 }
 
 type StreamerConfig struct {
-	StreamLatest bool
-	Provider     string
+	ResumeWithLatestChunks bool
+	Provider               string
+	Serializer             event.Serializer
+	PartitionMinSize       int
 }
 
-func (s *streamMgr) newInstance(ctx context.Context) (*streamInstance, context.Context) {
-	g, ctx := errgroup.WithContext(ctx)
+func (s *streamer) Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error {
+	// if stm not global return err
 
-	return &streamInstance{
-		streamMgr: s,
-		g:         g,
-	}, ctx
-}
-
-func (s *streamMgr) Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error {
 	stm := event.Stream(evts)
 	if stm.Empty() {
 		return nil
@@ -188,12 +225,12 @@ func (s *streamMgr) Persist(ctx context.Context, stmID event.StreamID, evts even
 		return event.Err(event.ErrInvalidStream, stmID.String(), "found id: "+stm[0].GlobalStreamID())
 	}
 
-	chunk, err := s.serializer.MarshalEventBatch(evts)
+	chunk, err := s.Serializer.MarshalEventBatch(evts)
 	if err != nil {
 		return err
 	}
 
-	path := objectkey(stmID.String(), FolderChunks, s.serializer.FileExt(), evts[0].At(), evts[0].GlobalVersion(),
+	path := objectKey(stmID.String(), FolderChunks, s.Serializer.FileExt(), evts[0].At(), evts[0].GlobalVersion(),
 		evts[len(evts)-1].GlobalVersion())
 
 	if _, err = s3manager.
@@ -202,7 +239,7 @@ func (s *streamMgr) Persist(ctx context.Context, stmID event.StreamID, evts even
 			Bucket:      aws.String(s.bucket),
 			Key:         aws.String(path),
 			Body:        bytes.NewReader(chunk),
-			ContentType: aws.String(s.serializer.ContentType()),
+			ContentType: aws.String(s.Serializer.ContentType()),
 		}); err != nil {
 		return event.Err(event.ErrAppendEventsFailed, stmID.String(), err.Error())
 	}
@@ -210,27 +247,7 @@ func (s *streamMgr) Persist(ctx context.Context, stmID event.StreamID, evts even
 	return nil
 }
 
-func NewStreamManager(svc ClientAPI, bucket string, serializer event.Serializer, opts ...func(cfg *StreamerConfig)) StreamManager {
-	if serializer == nil {
-		serializer = json.NewEventSerializer("")
-	}
-	stmer := &streamMgr{
-		svc:        svc,
-		bucket:     bucket,
-		serializer: serializer,
-		StreamerConfig: &StreamerConfig{
-			Provider:     ProviderS3,
-			StreamLatest: true,
-		},
-	}
-	for _, opt := range opts {
-		opt(stmer.StreamerConfig)
-	}
-
-	return stmer
-}
-
-func (s *streamMgr) queryObjectInput(bucket, key, query string) *s3.SelectObjectContentInput {
+func (s *streamer) queryObjectInput(bucket, key, query string) *s3.SelectObjectContentInput {
 	input := &s3.SelectObjectContentInput{
 		Bucket:         aws.String(bucket),
 		Key:            aws.String(key),
@@ -238,7 +255,7 @@ func (s *streamMgr) queryObjectInput(bucket, key, query string) *s3.SelectObject
 		ExpressionType: types.ExpressionType("SQL"),
 	}
 
-	switch s.serializer.EventFormat() {
+	switch s.Serializer.EventFormat() {
 	case event.EventFormatJSON:
 		input.InputSerialization = &types.InputSerialization{
 			// CompressionType: aws.String("GZIP"),
@@ -251,12 +268,13 @@ func (s *streamMgr) queryObjectInput(bucket, key, query string) *s3.SelectObject
 	return input
 }
 
-func (s *streamMgr) listObject(ctx context.Context, stmID, root string, f event.StreamFilter) ([]string, error) {
+func (s *streamer) listObject(ctx context.Context, stmID, root string, f event.StreamFilter) ([]string, error) {
 	if len(stmID) == 0 {
 		return nil, event.Err(event.ErrInvalidStream, stmID, "empty stream id")
 	}
 
-	prefix, minKey, maxKey := listObjectsRange(stmID, root, s.serializer.FileExt(), f)
+	prefix, minKey, maxKey := objectsRangeKeys(stmID, root, s.Serializer.FileExt(), f)
+
 	keys := []string{}
 
 	params := &s3.ListObjectsV2Input{
@@ -295,28 +313,86 @@ type queryRequest struct {
 	result chan event.Envelope
 }
 
-func (s *streamMgr) MergeChunks(ctx context.Context, stmID event.StreamID, f event.StreamFilter) error {
-	keys, err := s.listObject(ctx, stmID.GlobalID(), FolderChunks, f)
-	if err != nil {
-		return err
+// mergeDailyChunks merges chunks created during the day into a new partition object.
+//
+// The given current stream version and Last active day version are used to decide whether or not the minimum partition size is satisfied.
+// The created partition will be based on all available daily chunks.
+//
+// Partition will end up created without satisfying the min size if the function is called in a different day than the given one.
+//
+// It may returns an ignored flag if create new partition conditions are not satisfied.
+func (s *streamer) mergeDailyChunks(ctx context.Context, stmID event.StreamID, date time.Time, currVer, lastActiveDayVer event.Version) (ignored bool, err error) {
+	begin, end := timeutil.BeginningOfDay(date), timeutil.EndOfDay(date)
+	chunkf := event.StreamFilter{
+		Since: begin,
+		Until: end,
 	}
-	if len(keys) == 0 {
-		return nil
-	}
-	mkey, err := concatRangeKey(FolderPartitions, keys[0], keys[len(keys)-1])
+
+	// check if partitions are already created during the day
+	partKeys, err := s.listObject(ctx, stmID.GlobalID(), FolderPartitions, event.StreamFilter{
+		Since: chunkf.Since,
+		Until: chunkf.Until,
+	})
 	if err != nil {
-		return err
+		return false, err
+	}
+
+	// then make sure that the given current version allow us to create a new partition with minimum size.
+	// if so, make sure to add the appropriate version to chunk filter
+	if partCount := len(partKeys); partCount > 0 {
+		// resolve today's partition version from the last found one key.
+		lastPartKey := partKeys[partCount-1]
+		_, _, _, _, partVerStr, _, err := parseObjectKey(lastPartKey)
+		if err != nil {
+			return false, err
+		}
+		partVer, err := event.Ver(partVerStr)
+		if err != nil {
+			return false, err
+		}
+
+		// load chunks starting from partitions version +1
+		// Note that this filter helps to ensure idempotency.
+		// however, data race may occur, controling the func callers is needed: serialization/queueing
+		chunkf.From = partVer.Incr()
+
+		// in this case the lastActiveDayVer is today's last partition version
+		lastActiveDayVer = partVer
+	}
+
+	// Ignore merge if:
+	//	- current version does not allow to create a new partition with min size.
+	//  - given merge date is still today
+	if lastActiveDayVer.Add(uint64(s.PartitionMinSize), 0).After(currVer) &&
+		timeutil.DateEqual(time.Now().UTC(), begin) {
+		return true, nil
+	}
+
+	chunKeys, err := s.listObject(ctx, stmID.GlobalID(), FolderChunks, chunkf)
+	if err != nil {
+		return false, err
+	}
+	chunkCount := len(chunKeys)
+	if chunkCount == 0 {
+		return false, nil
+	}
+
+	newPartKey, err := mergeRangeKey(FolderPartitions, chunKeys[0], chunKeys[chunkCount-1])
+	if err != nil {
+		return false, err
 	}
 
 	inst, ctx := s.newInstance(ctx)
-	inst.runMergeChunks(ctx, stmID.String(), mkey, len(keys),
-		inst.runLoadChunks(ctx, stmID, keys),
+
+	// run load chunks workers + the merge processor
+	inst.runMergeChunks(ctx, stmID.String(), newPartKey, chunkCount,
+		inst.runLoadChunks(ctx, stmID, chunKeys),
 	)
 
-	return inst.g.Wait()
+	return false, inst.g.Wait()
 }
 
-func (s *streamMgr) queryObject(ctx context.Context, query, key string, queue chan event.Envelope) error {
+func (s *streamer) queryObject(ctx context.Context, query, key string, queue chan event.Envelope) error {
 	defer close(queue)
 	resp, err := s.svc.SelectObjectContent(ctx, s.queryObjectInput(s.bucket, key, query))
 	if err != nil {
@@ -344,7 +420,7 @@ func (s *streamMgr) queryObject(ctx context.Context, query, key string, queue ch
 		}
 	}()
 
-	if err := s.serializer.Decode(ctx, r, queue); err != nil {
+	if err := s.Serializer.Decode(ctx, r, queue); err != nil {
 		return err
 	}
 	if err := stream.Err(); err != nil {
@@ -353,9 +429,9 @@ func (s *streamMgr) queryObject(ctx context.Context, query, key string, queue ch
 	return nil
 }
 
-// resumeFromChunks returns the same filter used to query partitions or a one that complete it
-// based on the last queried partition
-func resumeFromChunks(f event.StreamFilter, keys []string) (event.StreamFilter, error) {
+// resumeWithChunks returns the same filter used to query partitions or a one that complete it
+// based on the last queried partition.
+func resumeWithChunks(f event.StreamFilter, keys []string) (event.StreamFilter, error) {
 	chf := f
 	if kl := len(keys); kl != 0 {
 		_, _, day, _, toVer, _, err := parseObjectKey(keys[kl-1])
@@ -372,9 +448,9 @@ func resumeFromChunks(f event.StreamFilter, keys []string) (event.StreamFilter, 
 	return chf, nil
 }
 
-// Replay queries a window of the stream and process in order the events
-// it fails if the stream is corrupted e.g an invalid sequence is encounter
-func (s *streamMgr) Replay(ctx context.Context, id event.StreamID, f event.StreamFilter, h event.StreamHandler) error {
+// Replay queries a window of the stream and process the events in order.
+// It fails if the stream is corrupted e.g an invalid sequence is  somehow encountered.
+func (s *streamer) Replay(ctx context.Context, id event.StreamID, f event.StreamFilter, h event.StreamHandler) error {
 	f.Build()
 
 	partkeys, err := s.listObject(ctx, id.GlobalID(), FolderPartitions, f)
@@ -386,8 +462,8 @@ func (s *streamMgr) Replay(ctx context.Context, id event.StreamID, f event.Strea
 		chunkeys []string
 		chunkf   event.StreamFilter
 	)
-	if s.StreamLatest {
-		chunkf, err = resumeFromChunks(f, partkeys)
+	if s.ResumeWithLatestChunks {
+		chunkf, err = resumeWithChunks(f, partkeys)
 		if err != nil {
 			return err
 		}
@@ -406,8 +482,8 @@ func (s *streamMgr) Replay(ctx context.Context, id event.StreamID, f event.Strea
 	for _, part := range partkeys {
 		envch[part] = make(chan event.Envelope, 1000)
 	}
-	if s.StreamLatest && len(chunkeys) > 0 {
-		// to avoide race, make sure to init chunks channel before spinning partition workers
+	if s.ResumeWithLatestChunks && len(chunkeys) > 0 {
+		// to avoide goroutine race, make sure to initial chunks channel before spinning partition workers up
 		envch["_chunks"] = inst.runUnmarchalChunks(
 			ctx,
 			inst.runLoadChunks(ctx, id, chunkeys),
@@ -420,8 +496,19 @@ func (s *streamMgr) Replay(ctx context.Context, id event.StreamID, f event.Strea
 	return inst.g.Wait()
 }
 
+func (s *streamer) newInstance(ctx context.Context) (*streamInstance, context.Context) {
+	g, ctx := errgroup.WithContext(ctx)
+
+	return &streamInstance{
+		streamer: s,
+		g:        g,
+	}, ctx
+}
+
+// streamInstance defines a session of work that handles operations such as replay stream, merge chunks...
+// It mainly deals concurrent failures, and allow draining channels in downstream goroutines
 type streamInstance struct {
-	*streamMgr
+	*streamer
 
 	g *errgroup.Group
 
@@ -557,7 +644,7 @@ func (s *streamInstance) runUnmarchalChunks(ctx context.Context, in chan []byte)
 				if s.getErr() != nil {
 					break // break select and continue the for loop
 				}
-				envs, err := s.serializer.UnmarshalEventBatch(b)
+				envs, err := s.Serializer.UnmarshalEventBatch(b)
 				if err != nil {
 					s.setErr(err)
 					break
@@ -627,7 +714,7 @@ func (s *streamInstance) runProcess(ctx context.Context, stmID string, parts []s
 			s.process(ctx, ch[key], cur, f, h)
 		}
 
-		if s.StreamLatest {
+		if s.ResumeWithLatestChunks {
 			chunkf.Build()
 			chunkch, ok := ch["_chunks"]
 			if ok {
@@ -678,7 +765,7 @@ func (s *streamInstance) runMergeChunks(ctx context.Context, stmID string, destk
 
 	s.g.Go(func() error {
 		defer w.Close()
-		if err := s.serializer.Concat(ctx, count, chunks, func(b []byte) (err error) {
+		if err := s.Serializer.Concat(ctx, count, chunks, func(b []byte) (err error) {
 			if s.getErr() != nil {
 				return
 			}
@@ -700,7 +787,7 @@ func (s *streamInstance) runMergeChunks(ctx context.Context, stmID string, destk
 			Bucket:      aws.String(s.bucket),
 			Key:         aws.String(destkey),
 			Body:        r,
-			ContentType: aws.String(s.serializer.ContentType()),
+			ContentType: aws.String(s.Serializer.ContentType()),
 		}); err != nil {
 			return event.Err(ErrStreamMergeChunksFailed, stmID, err)
 		}

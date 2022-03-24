@@ -12,16 +12,12 @@ import (
 )
 
 func TestEventStreamer_Persist(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping s3 test event streamer persist in short mode")
-	}
-
 	ctx := context.Background()
 
 	gstmID := event.NewStreamID(event.UID().String())
 
 	withBucket(t, s3svc, func(bucket string) {
-		streamer := NewStreamManager(s3svc, bucket, nil, func(cfg *StreamerConfig) {
+		streamer := NewStreamMaintainer(s3svc, bucket, nil, func(cfg *StreamerConfig) {
 			cfg.Provider = ProviderMinio
 		})
 
@@ -93,17 +89,13 @@ func TestEventStreamer_Persist(t *testing.T) {
 	})
 }
 func TestEventStreamer_Replay(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping s3 test event streamer replay in short mode")
-	}
-
 	ctx := context.Background()
 	gstmID := event.NewStreamID(event.UID().String())
 
 	withBucket(t, s3svc, func(bucket string) {
-		streamer := NewStreamManager(s3svc, bucket, nil, func(cfg *StreamerConfig) {
+		streamer := NewStreamMaintainer(s3svc, bucket, nil, func(cfg *StreamerConfig) {
 			cfg.Provider = ProviderMinio
-			cfg.StreamLatest = true
+			cfg.ResumeWithLatestChunks = true
 		})
 
 		gver := event.NewVersion()
@@ -207,23 +199,19 @@ func TestEventStreamer_Replay(t *testing.T) {
 }
 
 func TestEventMaintainer_MergeChunks(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping s3 test event maintainer contat chunks in short mode")
-	}
-
 	ctx := context.Background()
 	gstmID := event.NewStreamID(event.UID().String())
 
 	withBucket(t, s3svc, func(bucket string) {
-		streamer := NewStreamManager(s3svc, bucket, nil, func(cfg *StreamerConfig) {
+		streamer := NewStreamMaintainer(s3svc, bucket, nil, func(cfg *StreamerConfig) {
 			cfg.Provider = ProviderMinio
-			cfg.StreamLatest = false
+			cfg.ResumeWithLatestChunks = false
 		})
 		// persist chunks
 		gver := event.NewVersion()
 
 		chunkSize := 20
-		chunkCount := 10
+		chunkCount := 10 // 200 events
 		for i := 0; i < chunkCount; i++ {
 			if err := streamer.(intevent.Persister).Persist(ctx, gstmID,
 				event.Envelop(ctx, gstmID, testutil.GenEvts(chunkSize), func(env event.RWEnvelope) {
@@ -235,14 +223,36 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 			}
 		}
 
+		updatedAt := time.Now()
+		curVer := event.NewVersion().Add(uint64(chunkSize*chunkCount), 0)
+
+		// try to merge chunks knowing the partition min size is unsatified
+		ignored, err := streamer.mergeDailyChunks(ctx, gstmID, updatedAt, curVer, event.VersionZero)
+		if err != nil {
+			t.Fatalf("expect err be nil, got: %v", err)
+		}
+		if !ignored {
+			t.Fatal("expect merge be ignored, got false")
+		}
+
+		// change partition min size, so the partition must be created
+		streamer = NewStreamMaintainer(s3svc, bucket, nil, func(cfg *StreamerConfig) {
+			cfg.Provider = ProviderMinio
+			cfg.ResumeWithLatestChunks = false
+			cfg.PartitionMinSize = 100
+		})
+
+		ignored, err = streamer.mergeDailyChunks(ctx, gstmID, updatedAt, curVer, event.VersionZero)
+		if err != nil {
+			t.Fatalf("expect err be nil, got: %v", err)
+		}
+		if ignored {
+			t.Fatal("expect merge be not ignored, got true")
+		}
+
 		filter := event.StreamFilter{
 			From: event.NewVersion(),
 		}
-
-		if err := streamer.(StreamMerger).MergeChunks(ctx, gstmID, filter); err != nil {
-			t.Fatalf("expect err be nil, got: %v", err)
-		}
-
 		count := 0
 		if err := streamer.Replay(ctx, gstmID, filter, func(ctx context.Context, e event.Envelope) error {
 			count++
@@ -250,16 +260,17 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
-
 		if wantl, l := chunkCount*chunkSize, count; wantl != l {
 			t.Fatalf("expect %d events be persisted, got %d", wantl, l)
 		}
 
-		// make sure Replay events works when it has to to query both partitions and last uploaded chunks
-		streamer = NewStreamManager(s3svc, bucket, nil, func(cfg *StreamerConfig) {
+		// Replay works as excpected when streamer query both partitions and last uploaded chunks
+		streamer = NewStreamMaintainer(s3svc, bucket, nil, func(cfg *StreamerConfig) {
 			cfg.Provider = ProviderMinio
-			cfg.StreamLatest = true
+			cfg.ResumeWithLatestChunks = true
 		})
+
+		// persist a new chunk
 		latestChunkSize := 50
 		if err := streamer.(intevent.Persister).Persist(ctx, gstmID,
 			event.Envelop(ctx, gstmID, testutil.GenEvts(latestChunkSize), func(env event.RWEnvelope) {
@@ -276,7 +287,6 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
-
 		if wantl, l := chunkCount*chunkSize+latestChunkSize, count; wantl != l {
 			t.Fatalf("expect %d events be persisted, got %d", wantl, l)
 		}
