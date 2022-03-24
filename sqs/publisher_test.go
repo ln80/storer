@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/json"
 )
 
 const msgGroupID = "eventGrpID"
@@ -29,8 +28,6 @@ func TestEventPublisher(t *testing.T) {
 	dest1 := "dest1"
 	dest2 := "dest2"
 
-	ser := json.NewEventSerializer("")
-
 	evtAt := time.Now()
 	envs := event.Envelop(ctx, event.NewStreamID(stmID), []interface{}{
 		&event1{
@@ -49,14 +46,14 @@ func TestEventPublisher(t *testing.T) {
 
 	t.Run("test publish with empty queues map", func(t *testing.T) {
 		sqsvc := &clientMock{}
-		pub := NewPublisher(sqsvc, nil, ser)
+		pub := NewPublisher(sqsvc, nil)
 		if err := pub.Publish(ctx, dest1, envs); err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}
 	})
 
 	t.Run("test publish with queue dest not found", func(t *testing.T) {
-		pub := NewPublisher(&clientMock{}, map[string]string{dest1: queue}, ser)
+		pub := NewPublisher(&clientMock{}, map[string]string{dest1: queue})
 		if wanterr, err := ErrDestQueueNotFound, pub.Publish(ctx, dest2, envs); !errors.Is(err, wanterr) {
 			t.Fatalf("expect err be %v, got %v", wanterr, err)
 		}
@@ -64,7 +61,7 @@ func TestEventPublisher(t *testing.T) {
 
 	t.Run("test publish with infra error", func(t *testing.T) {
 		sqsvc := &clientMock{err: errors.New("infra error")}
-		pub := NewPublisher(sqsvc, map[string]string{dest1: queue}, ser)
+		pub := NewPublisher(sqsvc, map[string]string{dest1: queue})
 		if wanterr, err := ErrPublishEventFailed, pub.Publish(ctx, dest1, envs); !errors.Is(err, wanterr) {
 			t.Fatalf("expect err be %v, got %v", wanterr, err)
 		}
@@ -73,7 +70,7 @@ func TestEventPublisher(t *testing.T) {
 	t.Run("test successfully publish events", func(t *testing.T) {
 		sqsvc := &clientMock{}
 		queues := map[string]string{dest1: queue}
-		pub := NewPublisher(sqsvc, queues, ser)
+		pub := NewPublisher(sqsvc, queues)
 		if err := pub.Publish(ctx, dest1, envs); err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}

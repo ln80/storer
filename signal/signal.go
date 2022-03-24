@@ -3,6 +3,7 @@ package signal
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -15,6 +16,17 @@ var (
 // Processor presents a handler that receives a signal and apply a specific treatment
 // which may fails and returns error.
 type Processor func(ctx context.Context, sig Signal) error
+
+func CombineProcessors(ps []Processor) Processor {
+	return func(ctx context.Context, sig Signal) error {
+		for i, p := range ps {
+			if err := p(ctx, sig); err != nil {
+				return fmt.Errorf("signal processor %d failed: %w", i, err)
+			}
+		}
+		return nil
+	}
+}
 
 // Sender presents the service responsible for sending signals (only used for IPC).
 type Sender interface {
@@ -64,8 +76,16 @@ const (
 
 type ActiveStream struct {
 	*BaseSignal
-	GlobalStreamID string
-	Since, Until   int64
+	GlobalStreamID        string
+	LastUpdatedAt, SentAt int64
+	CurrentVersion        string
+	LastActiveDay         string
+	LastActiveDayVersion  string
+}
+
+func (sig *ActiveStream) SetLastActiveDay(day, ver string) {
+	sig.LastActiveDay = day
+	sig.LastActiveDayVersion = ver
 }
 
 func (sig *ActiveStream) StreamID() string {
@@ -73,14 +93,15 @@ func (sig *ActiveStream) StreamID() string {
 }
 
 // ActiveStreamSignal returns ActiveStream signal
-func ActiveStreamSignal(gstmID string, since, until int64) *ActiveStream {
+func ActiveStreamSignal(gstmID, currVer string, lastUpdatedAt, sentAt int64) *ActiveStream {
 	return &ActiveStream{
 		BaseSignal: &BaseSignal{
 			Name: SigActiveStream,
 		},
 		GlobalStreamID: gstmID,
-		Since:          since,
-		Until:          until,
+		LastUpdatedAt:  lastUpdatedAt,
+		SentAt:         sentAt,
+		CurrentVersion: currVer,
 	}
 }
 

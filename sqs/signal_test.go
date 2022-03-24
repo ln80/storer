@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/redaLaanait/storer/event"
 	"github.com/redaLaanait/storer/signal"
 )
 
@@ -23,6 +24,7 @@ func TestSignalManager(t *testing.T) {
 	genSignal := func() signal.Signal {
 		return signal.ActiveStreamSignal(
 			strconv.Itoa(time.Now().Nanosecond()),
+			event.VersionMin.String(),
 			time.Now().Add(-20*time.Second).Unix(),
 			time.Now().Unix(),
 		)
@@ -32,6 +34,7 @@ func TestSignalManager(t *testing.T) {
 		for i := 0; i < count; i++ {
 			sigs[i] = signal.ActiveStreamSignal(
 				strconv.Itoa(i),
+				event.VersionMin.String(),
 				time.Now().Add(-20*time.Second).Unix(),
 				time.Now().Unix(),
 			)

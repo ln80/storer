@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 	"github.com/redaLaanait/storer/event"
+	"github.com/redaLaanait/storer/json"
 )
 
 var (
@@ -17,17 +18,32 @@ var (
 )
 
 type publisher struct {
-	svc        ClientAPI
-	queues     map[string]string
-	serializer event.Serializer
+	svc    ClientAPI
+	queues map[string]string
+	*PublisherConfig
 }
 
-func NewPublisher(sqsvc ClientAPI, queues map[string]string, ser event.Serializer) event.Publisher {
-	return &publisher{
-		svc:        sqsvc,
-		queues:     queues,
-		serializer: ser,
+type PublisherConfig struct {
+	Serializer event.Serializer
+}
+
+func NewPublisher(sqsvc ClientAPI, queues map[string]string, opts ...func(cfg *PublisherConfig)) event.Publisher {
+	pub := &publisher{
+		svc:    sqsvc,
+		queues: queues,
+		PublisherConfig: &PublisherConfig{
+			Serializer: json.NewEventSerializer(""),
+		},
 	}
+
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		opt(pub.PublisherConfig)
+	}
+
+	return pub
 }
 
 var _ event.Publisher = &publisher{}
@@ -40,7 +56,6 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 
 	// skip publish if queues map is empty (still not intuitive)
 	if p.queues == nil {
-		// return event.Err(ErrDestQueueNotFound, stmID, "dest: "+dest)
 		return nil
 	}
 
@@ -51,7 +66,7 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 
 	entries := make([]types.SendMessageBatchRequestEntry, 0, len(evts))
 	for _, e := range evts {
-		msg, err := p.serializer.MarshalEvent(e)
+		msg, err := p.Serializer.MarshalEvent(e)
 		if err != nil {
 			return err
 		}

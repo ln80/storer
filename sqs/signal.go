@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
@@ -85,7 +86,7 @@ func (s *signalMgr) FlushBuffer(ctx context.Context, terr *error) error {
 
 	entries := make([]types.SendMessageBatchRequestEntry, count)
 	for i, bsig := range bsigs {
-		sigid := s.buff[i].SignalName() + "_" + s.buff[i].StreamID() + "_" + strconv.Itoa(i)
+		sigid := s.buff[i].StreamID() + "#" + s.buff[i].SignalName() + "#" + strconv.Itoa(i) + "#" + time.Now().String()
 		entries[i] = types.SendMessageBatchRequestEntry{
 			Id:                     aws.String(sigid),
 			MessageGroupId:         aws.String(s.buff[i].StreamID()),
