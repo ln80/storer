@@ -22,7 +22,10 @@ func (c *clientMock) SendMessageBatch(ctx context.Context,
 	if c.traces == nil {
 		c.traces = make(map[string][]types.SendMessageBatchRequestEntry)
 	}
-	c.traces[*params.QueueUrl] = params.Entries
+	if _, ok := c.traces[*params.QueueUrl]; !ok {
+		c.traces[*params.QueueUrl] = []types.SendMessageBatchRequestEntry{}
+	}
+	c.traces[*params.QueueUrl] = append(c.traces[*params.QueueUrl], params.Entries...)
 
-	return nil, nil
+	return &sqs.SendMessageBatchOutput{}, nil
 }

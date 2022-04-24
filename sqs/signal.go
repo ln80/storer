@@ -2,6 +2,8 @@ package sqs
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -15,7 +17,7 @@ import (
 )
 
 type SignalConfig struct {
-	bufferSize int
+	BufferSize int
 }
 
 type signalMgr struct {
@@ -35,7 +37,7 @@ func NewSignalManager(svc ClientAPI, queue string, opts ...func(cfg *SignalConfi
 	sigmng := &signalMgr{
 		svc:          svc,
 		queue:        queue,
-		SignalConfig: &SignalConfig{bufferSize: 10},
+		SignalConfig: &SignalConfig{BufferSize: 10},
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -54,7 +56,7 @@ func (s *signalMgr) Send(ctx context.Context, sig signal.Signal) error {
 	}
 	s.appendSignal(sig)
 
-	if s.bufferSize() >= s.SignalConfig.bufferSize {
+	if s.bufferSize() >= s.SignalConfig.BufferSize {
 		s.FlushBuffer(ctx, nil)
 	}
 	return nil
@@ -86,11 +88,12 @@ func (s *signalMgr) FlushBuffer(ctx context.Context, terr *error) error {
 
 	entries := make([]types.SendMessageBatchRequestEntry, count)
 	for i, bsig := range bsigs {
-		sigid := s.buff[i].StreamID() + "#" + s.buff[i].SignalName() + "#" + strconv.Itoa(i) + "#" + time.Now().String()
+		sigid := s.buff[i].StreamID() + "_" + s.buff[i].SignalName() + "_" + strconv.Itoa(i) + "_at" + strconv.Itoa(int(time.Now().Unix()))
+		bhash := md5.Sum(bsig)
 		entries[i] = types.SendMessageBatchRequestEntry{
 			Id:                     aws.String(sigid),
 			MessageGroupId:         aws.String(s.buff[i].StreamID()),
-			MessageDeduplicationId: aws.String(string(bsig)),
+			MessageDeduplicationId: aws.String(hex.EncodeToString(bhash[:])),
 			MessageBody:            aws.String(string(bsig)),
 		}
 	}
