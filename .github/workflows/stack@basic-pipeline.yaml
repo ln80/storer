@@ -1,14 +1,14 @@
-name: Build basic stack
+name: Stack@basic Build & Publish pipeline
 
 on:
   push:
     branches:
-      - init
+      - main
     paths:
       - 'stacks/basic/**'
   pull_request:
     branches:
-      - init
+      - main
     paths:
       - 'stacks/basic/**'
 
@@ -17,21 +17,9 @@ on:
     # working-directory: stacks/basic
 
 jobs:
-  build-deploy:
+  build-publish:
     runs-on: ubuntu-latest
-    name: Build Publish stack
-    
     steps:
-      - name: Generate stack Name
-        run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV
-      
-      - name: Display stack name
-        run: echo ${{ env.STACK_NAME }}
-
-      # remove step
-      - name: Display event name
-        run: echo ${{ github.event_name }}
-      
       - uses: actions/checkout@v2
       
       - name: Setup Go
@@ -54,32 +42,45 @@ jobs:
         run: |
           make validate
       
+      - name: Install Go dependencies
+        working-directory: ./stacks/basic
+        run: |
+          go mod tidy
+
       - name: Run unit tests
         working-directory: ./stacks/basic
         run: |
-          make test
+          make unit-test/run
         
       - name: Build stack
         working-directory: ./stacks/basic
         run: |
           make build
 
+      - name: Generate integ test stackname
+        run: echo STACK_NAME=storer-basic-test-$(date +%s) >> $GITHUB_ENV
+        if: ${{ github.event_name == 'push' }}
+      
+      - name: Display integ test stackname
+        run: echo ${{ env.STACK_NAME }}
+        if: ${{ github.event_name == 'push' }}
+
       # integration test only in case of push to branch
-      - name: Deploy integration tests stack
+      - name: Setup integ tests
         working-directory: ./stacks/basic
         if: ${{ github.event_name == 'push' }}
         run: |
-          make integration-test/deploy
+          make integ-test/deploy
 
-      - name: Run integration tests
+      - name: Run integ tests
         working-directory: ./stacks/basic
         if: ${{ github.event_name == 'push' }}
         run: |
-          make integration-test/run
+          make integ-test/run
 
-      # make sure to manually run the cmd after debugging failed tests
-      - name: Clear integration tests resources
+      # in case of failure, make sure to manually run the cmd after debugging
+      - name: Clear integ tests
         working-directory: ./stacks/basic
         if: ${{ github.event_name == 'push' }}
         run: |
-          make integration-test/clear
+          make integ-test/clear
