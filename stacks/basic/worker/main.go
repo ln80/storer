@@ -2,15 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"os"
-	"time"
+	"strconv"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/json"
 	"github.com/redaLaanait/storer/s3"
 	"github.com/redaLaanait/storer/signal"
 	"github.com/redaLaanait/storer/sqs"
@@ -18,8 +15,8 @@ import (
 )
 
 var (
-	receiver signal.Receiver
-	merger   s3.StreamMerger
+	receiver   signal.Receiver
+	maintainer s3.StreamMaintainer
 )
 
 type handler func(ctx context.Context, event events.SQSEvent) (err error)
@@ -33,35 +30,18 @@ func makeHandler(receiver signal.Receiver, worker signal.Processor) handler {
 		}
 
 		return receiver.Receive(ctx, data, worker)
-	}
-}
-
-func makeWorker(merger s3.StreamMerger) signal.Processor {
-	return func(ctx context.Context, sig signal.Signal) error {
-		switch sig := sig.(type) {
-		case *signal.ActiveStream:
-			rng := event.StreamFilter{
-				Since: time.Unix(0, sig.Since),
-				Until: time.Unix(0, sig.Until),
-			}
-
-			return merger.MergeChunks(ctx, event.NewStreamID(sig.StreamID()), rng)
-		}
-
-		// TODO return error if signal is unrecognized ??
-
-		return nil
+		// err = errors.New("fake error test alarm worker")
 	}
 }
 
 func init() {
 	queue, bucket := os.Getenv("SQS_QUEUE"), os.Getenv("S3_BUCKET")
 	if queue == "" || bucket == "" {
-		log.Fatal(fmt.Errorf(`
+		log.Fatalf(`
 			missed env params:
 				SQS_QUEUE: %s,
 				S3_BUCKET: %s
-		`, queue, bucket))
+		`, queue, bucket)
 	}
 
 	_, s3svc, sqsvc, err := utils.InitAWSClients()
@@ -69,11 +49,23 @@ func init() {
 		log.Fatal(err)
 	}
 
-	ser := json.NewEventSerializer("")
 	receiver = sqs.NewSignalManager(sqsvc, queue)
-	merger = s3.NewStreamManager(s3svc, bucket, ser)
+
+	maintainer = s3.NewStreamMaintainer(s3svc, bucket, func(cfg *s3.StreamerConfig) {
+		if val := os.Getenv("S3_PARTITION_MIN_SIZE"); val != "" {
+			partsize, err := strconv.Atoi(val)
+			if err != nil {
+				log.Fatalf(`invalid S3_PARTITION_MIN_SIZE value: %s`, val)
+			}
+			cfg.PartitionMinSize = partsize
+		}
+	})
 }
 
 func main() {
-	lambda.Start(makeHandler(receiver, makeWorker(merger)))
+	worker := signal.CombineProcessors([]signal.Processor{
+		s3.MakeSignalProcessor(maintainer),
+	})
+
+	lambda.Start(makeHandler(receiver, worker))
 }

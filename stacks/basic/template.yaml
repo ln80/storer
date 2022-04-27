@@ -11,7 +11,7 @@ Metadata:
     SpdxLicenseId: MIT
     LicenseUrl: LICENSE.txt
     ReadmeUrl: README.md
-    Labels: ['event-store', 'event-sourcing', 'dynamodb', 's3']
+    Labels: ['event-store', 'event-sourcing', 'ddd', 'dynamodb', 's3']
     HomePageUrl: https://github.com/redaLaanait/storer/stacks/basic
     SemanticVersion: 0.0.1
     SourceCodeUrl: https://github.com/redaLaanait/storer/stacks/basic
@@ -42,9 +42,25 @@ Parameters:
   DynamoDBWriteCapacity:
     Type: Number
     Default: 0
+  
+  S3PartitionMinSize:
+    Type: Number
+    Default: 10000
+
+  AlarmSNSTopic:
+    Type: String
+    Default: ""
+
+  # AlarmFallbackEmail:
+  #   Type: String
+  #   AllowedPattern:  '/[^\s@]+@[^\s@]+\.[^\s@]+/'
+  #   ConstraintDescription: You should enter a valid email
 
 Conditions:
-  DynamoDBInProvisionedMode: !Equals [!Ref DynamoDBBillingMode, PROVISIONED]
+  EnableAlarm: !Not
+    - !Equals
+      - !Ref AlarmSNSTopic
+      - ''
 
 Resources:
   EventTable:
@@ -78,33 +94,87 @@ Resources:
   EventBucket:
     Type: AWS::S3::Bucket
     Properties:
-      # VersioningConfiguration:
-      #   Status: Enabled
       BucketName: !Sub ${AppPrefix}-event-bucket
 
-  EventInternalWorkQueue:
+  InternalWorkQueue:
     Type: AWS::SQS::Queue
     Properties:
-        # QueueName: !Sub ${AppPrefix}-EventJobQueue.fifo
+        QueueName: !Sub ${AppPrefix}-internal-queue.fifo
         FifoQueue: true
         ReceiveMessageWaitTimeSeconds: 20
         VisibilityTimeout: 180
 
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+        # QueueName: !Sub ${AppPrefix}-internal-gstm-dlq.fifo
+        QueueName: !Sub ${AppPrefix}-internal-dlq
+        # FifoQueue: true
+        ReceiveMessageWaitTimeSeconds: 20
+        VisibilityTimeout: 180
+
+  # POLICIES:
+
+  EventWritePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument: 
+        Version: 2012-10-17
+        Statement: 
+          - Effect: Allow
+            Action: dynamodb:PutItem
+            Resource:
+              - !Sub 
+                  - "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${tableName}"
+                  - tableName: !Ref EventTable
+              - !Sub 
+                  - "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${EventTable}/index/*"
+                  - tableName: !Ref EventTable
+
+  EventReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument: 
+        Version: 2012-10-17
+        Statement: 
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:Query
+              - s3:GetObject
+            Resource:
+              - !Sub 
+                  - "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${tableName}"
+                  - tableName: !Ref EventTable
+              - !Sub 
+                  - "arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${tableName}/index/*"
+                  - tableName: !Ref EventTable
+              - !Sub 
+                  - "arn:${AWS::Partition}:s3:::${bucketName}/*"
+                  - bucketName: !Ref EventBucket
+
   # LAMBDA FUNCTIONS:
   
-
-  EventForwarderFunction:
+  ForwarderFunction:
     Type: AWS::Serverless::Function
+    # DependsOn: CloudWatchAlarmSNSTopic
     Properties:
-      FunctionName: !Sub ${AppPrefix}-EventForwarderFunction
+      FunctionName: !Sub ${AppPrefix}-ForwarderFunction
       CodeUri: forwarder/
       Handler: forwarder
       Events:
         StreamEvent:
           Type: DynamoDB
           Properties:
-            Stream: !GetAtt  EventTable.StreamArn
+            Stream: !GetAtt EventTable.StreamArn
             StartingPosition: TRIM_HORIZON
+            BisectBatchOnFunctionError: false
+            ParallelizationFactor: 1
+            MaximumRecordAgeInSeconds: -1 # confirm default value
+            MaximumRetryAttempts: -1 # confirm default value
+            DestinationConfig:
+              OnFailure:
+                Destination: !GetAtt DeadLetterQueue.Arn
             FilterCriteria:
               Filters:
                 - Pattern: '{"eventName": ["INSERT"], "dynamodb": { "Keys" : {"_pk": {"S": [{"anything-but": [ "internal" ]}]}}}}'
@@ -119,17 +189,17 @@ Resources:
             - Effect: Allow
               Action:
                 - 'sqs:SendMessage*'
-              Resource: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:*"
+              Resource: !Sub "arn:${AWS::Partition}:sqs:${AWS::Region}:${AWS::AccountId}:*"
       Environment:
           Variables:
             SQS_PUBLISH_QUEUES: !Ref ForwardQueueMap
             S3_BUCKET: !Ref EventBucket
             DYNAMODB_TABLE: !Ref EventTable
 
-  EventSchedularFunction:
+  SchedularFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${AppPrefix}-EventSchedularFunction
+      FunctionName: !Sub ${AppPrefix}-SchedularFunction
       CodeUri: schedular/
       Handler: schedular
       Events:
@@ -141,16 +211,16 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref EventTable
         - SQSSendMessagePolicy:
-            QueueName: !GetAtt EventInternalWorkQueue.QueueName
+            QueueName: !GetAtt InternalWorkQueue.QueueName
       Environment:
           Variables:
             DYNAMODB_TABLE: !Ref EventTable
-            SQS_QUEUE:  !GetAtt EventInternalWorkQueue.QueueName
+            SQS_QUEUE:  !GetAtt InternalWorkQueue.QueueName
 
-  EventInternalWorkFunction:
+  InternalWorkFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${AppPrefix}-EventInternalWorkFunction
+      FunctionName: !Sub ${AppPrefix}-InternalWorkFunction
       Timeout: 30
       CodeUri: worker/
       Handler: worker
@@ -158,7 +228,7 @@ Resources:
         EventJobEvent:
           Type: SQS
           Properties:
-            Queue: !GetAtt EventInternalWorkQueue.Arn
+            Queue: !GetAtt InternalWorkQueue.Arn
             BatchSize: 1
       Policies:
         - S3CrudPolicy:
@@ -166,31 +236,126 @@ Resources:
       Environment:
           Variables:
             S3_BUCKET: !Ref EventBucket
-            SQS_QUEUE:  !GetAtt EventInternalWorkQueue.QueueName
+            SQS_QUEUE:  !GetAtt InternalWorkQueue.QueueName
+            S3_PARTITION_MIN_SIZE: !Ref S3PartitionMinSize
 
-  IntegrationTest:
-    Type: AWS::Serverless::Function
+# ALARMS:
+
+  SchedularCloudWatchAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Condition: EnableAlarm
     Properties:
-      FunctionName: !Sub ${AppPrefix}-IntegrationTest
-      Timeout: 60
-      CodeUri: test/
-      Handler: test
-      Policies:
-        - S3CrudPolicy:
-            BucketName: !Sub ${AppPrefix}-event-bucket
-        - DynamoDBCrudPolicy:
-            TableName: !Sub ${AppPrefix}-event-table
-      Environment:
-          Variables:
-            S3_BUCKET: !Sub ${AppPrefix}-event-bucket
-            DYNAMODB_TABLE: !Sub ${AppPrefix}-event-table
+      ActionsEnabled: true
+      AlarmDescription: !Sub 'Schedule internal work task has failed.'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub ${AppPrefix}-SchedularFunction
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 30
+      Statistic: Sum
+      Threshold: 1
+      AlarmActions:
+        - !Ref AlarmSNSTopic
 
-## TODO define & export policy for both table and bucket
+  InternalWorkCloudWatchAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Condition: EnableAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmDescription: !Sub 'Process internal work has failed.'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub ${AppPrefix}-InternalWorkFunction
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 30
+      Statistic: Sum
+      Threshold: 1
+      AlarmActions:
+        - !Ref AlarmSNSTopic
+
+  ForwarderCloudWatchAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Condition: EnableAlarm
+    Properties:
+      ActionsEnabled: true
+      AlarmDescription: !Sub 'Save events in S3 or forward to external queues has failed.'
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Dimensions:
+        - Name: FunctionName
+          Value: !Sub ${AppPrefix}-ForwarderFunction
+      EvaluationPeriods: 1
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 30
+      Statistic: Sum
+      Threshold: 1
+      AlarmActions:
+        - !Ref AlarmSNSTopic
+
+  # DeadLetterQueuePolicy:
+  #   Type: AWS::SQS::QueuePolicy
+  #   Properties:
+  #     Queues:
+  #       - !Ref DeadLetterQueue
+  #     PolicyDocument:
+  #       Statement:
+  #         Effect: Allow
+  #         Principal:
+  #           Service: sns.amazonaws.com
+  #         Action: "SQS:SendMessage"
+  #         Resource: !GetAtt DeadLetterQueue.Arn
+  #         Condition:
+  #           ArnEquals:
+  #             "aws:SourceArn": !Ref GlobalStreamDeadLetterTopic
+
+  # GlobalStreamDeadLetterTopic:
+  #   Type: AWS::SNS::Topic
+  #   Properties:
+  #     FifoTopic: true
+  #     DisplayName: !Sub ${AppPrefix}-internal-gstm-dlq.fifo
+  #     TopicName: !Sub ${AppPrefix}-internal-gstm-dlq.fifo
+  #     # Subscription:
+  #     #   - Endpoint: !GetAtt DeadLetterQueue.Arn
+  #     #     Protocol: sqs
+
+  # GlobalStreamDeadLetterSubscription:
+  #   Type: 'AWS::SNS::Subscription'
+  #   Properties:
+  #     TopicArn: !Ref GlobalStreamDeadLetterTopic
+  #     Endpoint: !GetAtt 
+  #       - DeadLetterQueue
+  #       - Arn
+  #     Protocol: sqs
+  #     RawMessageDelivery: 'true'
+      
+  # CloudWatchAlarmSNSTopic:
+  #   Type: AWS::SNS::Topic
+  #   Properties:
+  #     DisplayName: !Sub ${AppPrefix}-cloudwatch-alarm
+  #     TopicName: !Sub ${AppPrefix}-cloudwatch-alarm
+  #     Subscription:
+  #       - Endpoint: laanait.reda@gmail.com
+  #         Protocol: email
 
 Outputs:
   EventTable:
     Description: "Event Table"
     Value: !Ref EventTable
+
   EventBucket:
     Description: "Event Bucket"
     Value: !Ref EventBucket
+
+  EventWritePolicy:
+    Description: "Event Write Policy"
+    Value: !Ref EventWritePolicy
+
+  EventReadPolicy:
+    Description: "Event Read Policy"
+    Value: !Ref EventReadPolicy

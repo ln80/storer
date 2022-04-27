@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/redaLaanait/storer/dynamo"
-	"github.com/redaLaanait/storer/json"
 	"github.com/redaLaanait/storer/s3"
 	"github.com/redaLaanait/storer/sqs"
 	"github.com/redaLaanait/storer/stacks/utils"
@@ -21,29 +20,28 @@ var fwd dynamo.Forwarder
 func init() {
 	table, bucket := os.Getenv("DYNAMODB_TABLE"), os.Getenv("S3_BUCKET")
 	if table == "" || bucket == "" {
-		log.Fatal(fmt.Errorf(`
+		log.Fatalf(`
 			missed env params:
 				DYNAMODB_TABLE: %v,
 				S3_BUCKET: %s
-		`, table, bucket))
+		`, table, bucket)
 	}
 	queues, err := utils.ParseStringToMap(os.Getenv("SQS_PUBLISH_QUEUES"))
 	if err != nil {
 		log.Fatal(fmt.Errorf("invalid sqs queues env param %s, err: %w", os.Getenv("SQS_QUEUES"), err))
 	}
-	//aa
+	if queues == nil {
+		log.Println("warning: empty forward queues")
+	}
 
 	dbsvc, s3svc, sqsvc, err := utils.InitAWSClients()
 	if err != nil {
 		log.Fatal(fmt.Errorf("failed to init aws client: %w", err))
 	}
 
-	ser := json.NewEventSerializer("")
-
 	fwd = dynamo.NewForwarder(dbsvc, table,
-		s3.NewStreamManager(s3svc, bucket, ser),
-		sqs.NewPublisher(sqsvc, queues, ser),
-		ser,
+		s3.NewStreamePersister(s3svc, bucket),
+		sqs.NewPublisher(sqsvc, queues),
 	)
 }
 
@@ -80,6 +78,9 @@ func makeHandler(fwd dynamo.Forwarder) handler {
 				log.Printf("event store must be immutable, unauthorized action: %s change: %v", ev.EventName, ev.Change)
 			}
 		}
+
+		// return errors.New("fake forwarder errors")
+
 		if len(recs) == 0 {
 			return nil
 		}
