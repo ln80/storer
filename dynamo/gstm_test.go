@@ -21,7 +21,7 @@ func TestGSTM(t *testing.T) {
 	withTable(t, dbsvc, func(table string) {
 		// prepare global stream
 		stmID := event.UID().String()
-		ver := event.NewVersion()
+		gver := event.NewVersion()
 		gstm0 := GSTM{
 			StreamID: stmID,
 			Item: Item{
@@ -31,7 +31,7 @@ func TestGSTM(t *testing.T) {
 		}
 
 		// update gstm
-		if err := gstm0.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), ver); err != nil {
+		if err := gstm0.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), gver); err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}
 
@@ -42,7 +42,7 @@ func TestGSTM(t *testing.T) {
 		if want, got :=
 			(&ActiveDay{
 				Day:     time.Now().Format("2006/01/02"),
-				Version: ver.String(),
+				Version: gver.String(),
 			}), gstm0.LastActiveDay(time.Now().AddDate(0, 0, 1)); !reflect.DeepEqual(want, got) {
 			t.Fatalf("expect %v, %v, be equals", want, got)
 		}
@@ -79,7 +79,7 @@ func TestGSTM(t *testing.T) {
 
 		// test move forward the stream checkpoint
 		gstm1 := gstm0
-		if err := gstm1.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), ver.Incr()); err != nil {
+		if err := gstm1.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), gver.Incr()); err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}
 		if err := persistGSTM(ctx, dbsvc, table, gstm1); err != nil {
@@ -96,12 +96,9 @@ func TestGSTM(t *testing.T) {
 
 		// test de-increment the checkpoint
 		gstm02 := gstm1
-		// gstm02.Version = ver.String()
-		// gstm02.LastEventID = event.UID().String()
-		// gstm02.UpdatedAt = time.Now().UnixNano()
-		gstm02.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), ver)
+		gstm02.Update(genGSTMTestEvt(ctx, event.NewStreamID(stmID)), gver)
 
-		// the write must fail and be ignored
+		// the write must silently fail and be ignored for idempotency reason
 		if err := persistGSTM(ctx, dbsvc, table, gstm02); err != nil {
 			t.Fatalf("expect persist gstm, got err: %v", err)
 		}
@@ -111,9 +108,6 @@ func TestGSTM(t *testing.T) {
 		}
 		if reflect.DeepEqual(&gstm02, rgstm) {
 			t.Fatal("expect gstms not be equal, got:", spew.Sdump(gstm02), spew.Sdump(rgstm))
-		}
-		if !reflect.DeepEqual(&gstm1, rgstm) {
-			t.Fatal("expect gstms be equal, got:", spew.Sdump(gstm1), spew.Sdump(rgstm))
 		}
 	})
 }

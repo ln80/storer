@@ -70,50 +70,71 @@ func (s *eventSerializer) FileExt() string {
 	return "json"
 }
 
-func (s *eventSerializer) MarshalEvent(evt event.Envelope) (b []byte, err error) {
-	defer func() {
-		if err != nil {
-			err = event.Err(event.ErrMarshalEventFailed, evt.StreamID(), err)
-		}
-	}()
+func (s *eventSerializer) MarshalEvent(evt event.Envelope) (b []byte, n int, err error) {
 	if evt == nil {
 		err = event.ErrMarshalEmptyEvent
 		return
 	}
-	if jsonEvt, ok := evt.(*jsonEvent); ok {
-		b, err = json.Marshal(jsonEvt)
-	} else {
+
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w: %v", event.ErrMarshalEventFailed, err)
+		}
+	}()
+
+	var (
+		jsonEvt *jsonEvent
+		ok      bool
+	)
+	if jsonEvt, ok = evt.(*jsonEvent); !ok {
 		jsonEvt, err = convertEvent(evt)
 		if err != nil {
-			return nil, err
+			return
 		}
-		b, err = json.Marshal(jsonEvt)
 	}
+	b, err = json.Marshal(jsonEvt)
+
+	n = len(b)
+
 	return
 }
 
-func (s *eventSerializer) MarshalEventBatch(evts []event.Envelope) (b []byte, err error) {
+func (s *eventSerializer) MarshalEventBatch(evts []event.Envelope) (b []byte, n []int, err error) {
+	l := len(evts)
+
+	if l == 0 {
+		err = event.ErrMarshalEmptyEvent
+		return
+	}
+
+	// init sizes slice
+	n = make([]int, l)
+
+	// normalise failure, and do not propagate infra error
 	defer func() {
 		if err != nil {
-			if len(evts) > 0 {
-				err = event.Err(event.ErrMarshalEventFailed, evts[0].StreamID(), err)
-			} else {
-				err = event.Err(event.ErrMarshalEventFailed, "", err)
-			}
+			err = fmt.Errorf("%w: %v", event.ErrMarshalEventFailed, err)
 		}
 	}()
-	jsonEvts := make([]jsonEvent, len(evts))
+
+	jsonEvts := make([]jsonEvent, l)
 	for i, evt := range evts {
-		if jsonEvt, ok := evt.(*jsonEvent); ok {
-			jsonEvts[i] = *jsonEvt
-		} else {
+		var (
+			jsonEvt *jsonEvent
+			ok      bool
+		)
+		if jsonEvt, ok = evt.(*jsonEvent); !ok {
 			jsonEvt, err = convertEvent(evt)
 			if err != nil {
-				return nil, err
+				return
 			}
-			jsonEvts[i] = *jsonEvt
 		}
+		jsonEvts[i] = *jsonEvt
+
+		bEvt, _ := json.Marshal(jsonEvt)
+		n[i] = len(bEvt)
 	}
+
 	b, err = json.Marshal(jsonEvts)
 	return
 }
@@ -150,7 +171,9 @@ func (s *eventSerializer) Decode(ctx context.Context, r io.Reader, ch chan<- eve
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			var evt jsonEvent
+			var evt = jsonEvent{
+				reg: s.eventRegistry,
+			}
 			if err := dec.Decode(&evt); err == io.EOF {
 				loop = false
 				break
@@ -204,7 +227,7 @@ func (s *eventSerializer) Concat(ctx context.Context, chunksLen int, chunks chan
 				break
 			}
 			fmtChunk := strings.TrimSpace(string(chunk))
-			fmtChunk = fmtChunk[1 : len(fmtChunk)-1] // remove square brackets from chunk json
+			fmtChunk = fmtChunk[1 : len(fmtChunk)-1] // remove square brackets from chunk's json
 			if _, err := buf.Write([]byte(fmtChunk)); err != nil {
 				return err
 			}

@@ -111,11 +111,13 @@ func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[strin
 			continue
 		}
 
-		ver, _ := event.ParseVersion(gstm.Version)
-		for _, ev := range evts {
-			ver = ver.Incr()
+		// get current global version
+		gver, _ := event.ParseVersion(gstm.Version)
 
-			if err := gstm.Update(ev, ver); err != nil {
+		for _, ev := range evts {
+			gver = gver.Incr()
+
+			if err := gstm.Update(ev, gver); err != nil {
 				return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, err)
 			}
 
@@ -126,7 +128,7 @@ func (f *forwarder) checkpoint(gstms map[string]*GSTM, recs []Record) (map[strin
 			if !ok {
 				return nil, event.Err(ErrUnexpectedGSTMFailure, gstmID, "unmarshled event does not support SetGlobalVersion")
 			}
-			rev.SetGlobalVersion(ver)
+			rev.SetGlobalVersion(gver)
 			mevs[gstmID] = append(mevs[gstmID], rev)
 		}
 	}

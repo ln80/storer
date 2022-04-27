@@ -62,10 +62,10 @@ func (gstm GSTM) Validate() error {
 
 // Update the global stream checkpoint related infos.
 // It also keeps records of previous active days version.
-func (gstm *GSTM) Update(evt event.Envelope, ver event.Version) error {
+func (gstm *GSTM) Update(evt event.Envelope, gver event.Version) error {
 	// update checkpoint infos
 	gstm.LastEventID = evt.ID()
-	gstm.Version = ver.String()
+	gstm.Version = gver.String()
 	gstm.UpdatedAt = evt.At().UnixNano()
 
 	// init last active days record map if needed
@@ -76,7 +76,7 @@ func (gstm *GSTM) Update(evt event.Envelope, ver event.Version) error {
 	day := time.Unix(0, gstm.UpdatedAt).Format("2006/01/02")
 	gstm.LastActiveDays[day] = ActiveDay{
 		Day:     day,
-		Version: ver.String(),
+		Version: gver.String(),
 	}
 
 	// remove old day from record if max record exceeded
@@ -89,7 +89,7 @@ func (gstm *GSTM) Update(evt event.Envelope, ver event.Version) error {
 		delete(gstm.LastActiveDays, days[0])
 	}
 
-	// TODO enforce gstm's invariants rather than post validate
+	// TODO enforce gstm's invariants rather than post-validate
 	return gstm.Validate()
 }
 

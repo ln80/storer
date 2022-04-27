@@ -184,7 +184,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 		namespace := "service1"
 		ser := NewEventSerializer(namespace)
 		evt := event.Envelop(ctx, stmID, testutil.GenEvts(1))[0]
-		b, err := ser.MarshalEvent(evt)
+		b, _, err := ser.MarshalEvent(evt)
 		if err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}
@@ -196,7 +196,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 		assertCmpEvt(t, revt, evt, true)
 
 		// make sure we do not lose data even if we marshal x2
-		b2, err := ser.MarshalEvent(revt)
+		b2, _, err := ser.MarshalEvent(revt)
 		if err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}
@@ -214,7 +214,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 		namespace := "service2"
 		ser := NewEventSerializer(namespace)
 		evts := event.Envelop(ctx, stmID, testutil.GenEvts(4))
-		b, err := ser.MarshalEventBatch(evts)
+		b, _, err := ser.MarshalEventBatch(evts)
 		if err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}
@@ -231,7 +231,7 @@ func TestMarshalUnmarshal(t *testing.T) {
 		}
 
 		// make sure we do not lose data even if we marshal x2
-		b2, err := ser.MarshalEventBatch(revts)
+		b2, _, err := ser.MarshalEventBatch(revts)
 		if err != nil {
 			t.Fatalf("expect err be nil, got %v", err)
 		}

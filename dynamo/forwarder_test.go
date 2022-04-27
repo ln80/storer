@@ -49,7 +49,7 @@ func (p *persisterMock) Persist(ctx context.Context, stmID event.StreamID, envs 
 }
 
 func makeRecord(ser event.Serializer, gstmID string, envs []event.Envelope) Record {
-	chunk, _ := ser.MarshalEventBatch(envs)
+	chunk, _, _ := ser.MarshalEventBatch(envs)
 	return Record{
 		Item: Item{
 			HashKey: gstmID,

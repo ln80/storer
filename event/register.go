@@ -23,11 +23,14 @@ var (
 type Register interface {
 	// Set register the given event in the registry.
 	Set(event interface{}) Register
+
 	// Get return an empty instance of the given event type.
 	// Note that it returns the value type, not the pointer
 	Get(name string) (interface{}, error)
+
 	// Convert the given event to its equivalent from the global namespace
 	Convert(evt interface{}) (interface{}, error)
+
 	// clear all namespace registries. Its mainly used in internal tests
 	clear()
 }
@@ -64,9 +67,9 @@ func NewRegister(namespace string) Register {
 
 // Set implements Set method of the Register interface.
 // It registers the given event in the current namespace registry.
-// It uses TypeOfWithNamspace func to solve the event name (aka ID).
-// By default the event name is {package name}.{event struct name}
-// In case of namespace exists, the event name becomes {namespace}.{evnet struct name}
+// It uses TypeOfWithNamspace func to solve the event name.
+// By default the event name is "{package name}.{event struct name}""
+// In case of namespace exists, the event name becomes "{namespace}.{event struct name}""
 func (r *register) Set(evt interface{}) Register {
 	name := TypeOfWithNamspace(r.namespace, evt)
 	rType, _ := resolveType(evt)

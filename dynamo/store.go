@@ -17,6 +17,10 @@ import (
 	"github.com/redaLaanait/storer/json"
 )
 
+const (
+	EventSizeLimit = 256000 // 250 KB
+)
+
 type Record struct {
 	Item
 	Events  []byte `dynamodbav:"events"`
@@ -163,7 +167,7 @@ func (s *store) AppendToStream(ctx context.Context, stm sourcing.Stream) (err er
 		return
 	}
 
-	// update stream in-memory checkpoint if the new chunk, only is succesfully appended
+	// update stream's in-memory checkpoint if the new chunk is succesfully appended
 	defer func() {
 		if err == nil {
 			s.checkVersion(stm.ID(), stm.Version())
@@ -175,17 +179,16 @@ func (s *store) AppendToStream(ctx context.Context, stm sourcing.Stream) (err er
 	keysFn := func() (string, string) {
 		return recordHashKey(id), recordRangeKeyWithVersion(stm.ID(), ver)
 	}
-	// we ignore "check previous record exists" if the chunk to append is supposed to be the first.
+	// ignore "check previous record exists" if the chunk is supposed to be the first in stream.
 	if ver.Trunc().After(event.VersionMin) {
-		// "check previous record" + "save new chunk" operations are not transactional,
-		// and we suppose the store table is immutable
-		// a dirty read may occur if table is somehow corrupted/updated between
+		// Note that "check previous record" + "save new chunk" operations are not transactional,
+		// a dirty read may occur if table is somehow corrupted/updated, which is unlikely the case.
 		if err = s.previousRecordExists(ctx, id, ver); err != nil {
 			return err
 		}
 	}
-	// doAppend still perform another check to ensure the chunk version does not already exist
-	// although doAppend does not guarantees chunks versions are in sequence.
+	// doAppend still perform another check to ensure the chunk version does not already exist.
+	// Although it does not guarantees chunks' versions are in sequence.
 	err = s.doAppend(ctx, id, &ver, stm.Unwrap(), keysFn)
 	return
 }
@@ -201,7 +204,7 @@ func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...eve
 		from, to = event.VersionMin, event.VersionMax
 	}
 
-	// update the stream in-memory checkpoint if lastest stream events are successfully loaded
+	// update the stream in-memory checkpoint if recent stream events are successfully loaded
 	if to == event.VersionMax {
 		defer func() {
 			if err == nil {
@@ -234,7 +237,7 @@ func (s *store) LoadStream(ctx context.Context, id event.StreamID, vrange ...eve
 	return
 }
 
-// checkVersion set the given version as the current one the stream in a memory cache
+// checkVersion set the given version as the current one the stream in-memory checkpoint
 func (s *store) checkVersion(id event.StreamID, ver event.Version) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -251,21 +254,21 @@ func (s *store) lastCheckedVersion(id event.StreamID) (ver string, ok bool) {
 	return
 }
 
-// previousRecordExists ensures the given stream chunks are in sequence in case of a version-based stream.
-// It also maintains/refresh the in-memory checkpoint of the given stream.
+// previousRecordExists ensures the given chunk is in sequence within the stream in case of a version-based stream.
 func (s *store) previousRecordExists(ctx context.Context, id event.StreamID, verToAppend event.Version) error {
 	// previous version should be equals to current stream version (without fractional part)
 	prever := verToAppend.Decr()
 	cacheUpdated := false
 
 CHECK_PREVIOUS_RECORD:
-	// get current stream version from memory cache
+	// get current stream version from in-memory checkpoint cache
 	lastver, ok := s.lastCheckedVersion(id)
 	if ok {
 		if prever.String() == lastver {
 			return nil
 		}
-		// coming to point where cache is refreshed but prev ver still ahead means the vertoAppend is not in sequence
+		// coming to point where cache is refreshed but prev ver still ahead
+		// means that the ver to append is not in sequence
 		if prever.String() < lastver || cacheUpdated {
 			return event.Err(event.ErrAppendEventsFailed, id.String(), "invalid chunk version, it must be next to previous record version: "+prever.String())
 		}
@@ -307,8 +310,9 @@ CHECK_PREVIOUS_RECORD:
 }
 
 // doAppend works for both version and timestamp based streams.
-// It appends the given chunk of events to stream.
-// The ver parameter must be not nil in case of a version-based stream
+// It appends the given chunk of events to the stream.
+//
+// Note that version param must be not nil in case of a version-based stream.
 func (s *store) doAppend(ctx context.Context, id event.StreamID, ver *event.Version, evts []event.Envelope, keysFn func() (string, string)) error {
 	if len(evts) == 0 {
 		return nil
@@ -319,9 +323,15 @@ func (s *store) doAppend(ctx context.Context, id event.StreamID, ver *event.Vers
 		ses = NewSession(s.svc)
 	}
 
-	b, err := s.Serializer.MarshalEventBatch(evts)
+	b, n, err := s.Serializer.MarshalEventBatch(evts)
 	if err != nil {
 		return event.Err(event.ErrAppendEventsFailed, id.String(), err)
+	}
+
+	for _, size := range n {
+		if size > EventSizeLimit {
+			return event.Err(event.ErrAppendEventsFailed, id.String(), "event size limit exceeded")
+		}
 	}
 
 	hk, rk := keysFn()
@@ -372,7 +382,7 @@ func (s *store) doAppend(ctx context.Context, id event.StreamID, ver *event.Vers
 }
 
 // doLoad works for both version and timestamp based streams.
-// it loads and unmarshals events from the dynamodb table.
+// It loads and unmarshals events from the dynamodb table.
 func (s *store) doLoad(ctx context.Context, id event.StreamID, from, to string) ([]event.Envelope, error) {
 	expr, err := expression.
 		NewBuilder().
