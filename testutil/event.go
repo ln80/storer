@@ -43,13 +43,14 @@ func GenEvts(count int) []interface{} {
 func FormatEnv(env event.Envelope) string {
 	return fmt.Sprintf(`
 		stmID: %s
+		type: %s
 		evtID: %s
 		at: %v
 		version: %v
 		globalVersion: %v
 		user: %s
 		data: %v
-	`, env.StreamID(), env.ID(), env.At().UnixNano(), env.Version(), env.GlobalVersion(), env.User(), env.Event())
+	`, env.StreamID(), env.Type(), env.ID(), env.At().UnixNano(), env.Version(), env.GlobalVersion(), env.User(), env.Event())
 }
 
 func CmpEnv(env1, env2 event.Envelope) bool {
@@ -62,8 +63,8 @@ func CmpEnv(env1, env2 event.Envelope) bool {
 		reflect.DeepEqual(env1.Event(), env2.Event())
 }
 
-func RegisterEvent() {
-	event.NewRegister("").
+func RegisterEvent(namespace string) event.Register {
+	return event.NewRegister(namespace).
 		Set(Event1{}).
 		Set(Event2{})
 }
