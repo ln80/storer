@@ -93,12 +93,11 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 	}
 
 	for _, e := range evts {
-		msg, err := p.Serializer.MarshalEvent(e)
+		msg, msgSize, err := p.Serializer.MarshalEvent(e)
 		if err != nil {
 			return err
 		}
 
-		msgSize := len([]byte(msg))
 		if msgSize > MsgSizeLimit {
 			return fmt.Errorf("%w: event details: (type: %s, id: %s, size: %d)",
 				ErrPublishInvalidMsgSizeLimit, e.Type(), e.ID(), msgSize)

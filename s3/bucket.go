@@ -22,20 +22,20 @@ func createBucket(ctx context.Context, s3svc AdminAPI, name string) error {
 	return nil
 }
 
-func deleteBucket(ctx context.Context, s3svc AdminAPI, name string) error {
-	// if _, err := s3svc.DeleteObjects(ctx, &s3.DeleteObjectsInput{
-	// 	Bucket: aws.String(name),
-	// 	Delete: &types.Delete{
+// func deleteBucket(ctx context.Context, s3svc AdminAPI, name string) error {
+// 	// if _, err := s3svc.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+// 	// 	Bucket: aws.String(name),
+// 	// 	Delete: &types.Delete{
 
-	// 	},
+// 	// 	},
 
-	// }); err != nil {
-	// 	return err
-	// }
-	if _, err := s3svc.(*s3.Client).DeleteBucket(ctx, &s3.DeleteBucketInput{
-		Bucket: aws.String(name),
-	}); err != nil {
-		return err
-	}
-	return nil
-}
+// 	// }); err != nil {
+// 	// 	return err
+// 	// }
+// 	if _, err := s3svc.(*s3.Client).DeleteBucket(ctx, &s3.DeleteBucketInput{
+// 		Bucket: aws.String(name),
+// 	}); err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }

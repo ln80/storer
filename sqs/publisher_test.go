@@ -41,7 +41,7 @@ func TestEventPublisher(t *testing.T) {
 			Val: "test content 3",
 		},
 	}
-	// Batch has 14 events in total. This applies two SQS batches to be saved.
+	// Batch has 14 events in total. This applies two SQS batches to be sent.
 	for i := 4; i < 15; i++ {
 		evts = append(evts, &event1{
 			Val: "test content " + strconv.Itoa(i),

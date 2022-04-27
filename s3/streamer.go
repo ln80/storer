@@ -126,13 +126,10 @@ func makeObjectQuery(provider string, filter event.StreamFilter) (query string) 
 	} else {
 		query += ` S3Object[*][*]`
 	}
-	query += fmt.Sprintf(` as ev
-		WHERE
-			ev.GVer BETWEEN '%s' AND '%s'
-			AND
-			ev.At BETWEEN %d AND %d
-
-	`, filter.From.String(), filter.To.String(), filter.Since.UnixNano(), filter.Until.UnixNano())
+	// seems that S3 SQL does not support breaking lines
+	query += fmt.Sprintf(
+		` as ev WHERE ev."GVer" BETWEEN '%s' AND '%s' AND ev."At" BETWEEN %d AND %d`,
+		filter.From.String(), filter.To.String(), filter.Since.UnixNano(), filter.Until.UnixNano())
 
 	return query
 }
@@ -168,7 +165,7 @@ func newStreamService(svc ClientAPI, bucket string, opts ...func(cfg *StreamerCo
 			Provider:               ProviderS3,
 			ResumeWithLatestChunks: true,
 			Serializer:             json.NewEventSerializer(""),
-			PartitionMinSize:       100000,
+			PartitionMinSize:       10000,
 		},
 	}
 	for _, opt := range opts {
@@ -209,7 +206,7 @@ type StreamerConfig struct {
 }
 
 func (s *streamer) Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error {
-	// if stm not global return err
+	// TODO if stm not global return err
 
 	stm := event.Stream(evts)
 	if stm.Empty() {
@@ -225,7 +222,7 @@ func (s *streamer) Persist(ctx context.Context, stmID event.StreamID, evts event
 		return event.Err(event.ErrInvalidStream, stmID.String(), "found id: "+stm[0].GlobalStreamID())
 	}
 
-	chunk, err := s.Serializer.MarshalEventBatch(evts)
+	chunk, _, err := s.Serializer.MarshalEventBatch(evts)
 	if err != nil {
 		return err
 	}
@@ -337,7 +334,7 @@ func (s *streamer) mergeDailyChunks(ctx context.Context, stmID event.StreamID, d
 		return false, err
 	}
 
-	// then make sure that the given current version allow us to create a new partition with minimum size.
+	// then make sure that the current version allow us to create a new partition with minimum size.
 	// if so, make sure to add the appropriate version to chunk filter
 	if partCount := len(partKeys); partCount > 0 {
 		// resolve today's partition version from the last found one key.
@@ -396,7 +393,6 @@ func (s *streamer) queryObject(ctx context.Context, query, key string, queue cha
 	defer close(queue)
 	resp, err := s.svc.SelectObjectContent(ctx, s.queryObjectInput(s.bucket, key, query))
 	if err != nil {
-		// return core.InfraError(err, fmt.Sprintf("failed to read stream from object '%s'", key))
 		return err
 	}
 	stream := resp.GetStream()
@@ -483,7 +479,7 @@ func (s *streamer) Replay(ctx context.Context, id event.StreamID, f event.Stream
 		envch[part] = make(chan event.Envelope, 1000)
 	}
 	if s.ResumeWithLatestChunks && len(chunkeys) > 0 {
-		// to avoide goroutine race, make sure to initial chunks channel before spinning partition workers up
+		// to avoid goroutine race, make sure to initial chunks channel before spinning partition workers up
 		envch["_chunks"] = inst.runUnmarchalChunks(
 			ctx,
 			inst.runLoadChunks(ctx, id, chunkeys),
@@ -553,7 +549,7 @@ func (s *streamInstance) runLoadChunks(ctx context.Context, stmID event.StreamID
 	for i := 0; i < workPoolSize; i++ {
 		s.g.Go(func() error {
 			downloader := s3manager.NewDownloader(s.svc, func(d *s3manager.Downloader) {
-				// chunks are small pieces of events, no need to internally spin up many workers
+				// chunks are small pieces of events, no need to internally spin up many download workers
 				d.Concurrency = 1
 			})
 			for loop := true; loop; {

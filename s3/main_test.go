@@ -39,12 +39,6 @@ func withBucket(t *testing.T, s3svc AdminAPI, tfn func(bucket string)) {
 		t.Fatalf("failed to create test event bucket: %v", err)
 	}
 
-	// defer func() {
-	// 	if err := deleteBucket(ctx, s3svc, bucket); err != nil {
-	// 		t.Fatalf("failed to clean aka remove test event bucket: %v", err)
-	// 	}
-	// }()
-
 	tfn(bucket)
 }
 

@@ -17,6 +17,7 @@ var (
 // which may fails and returns error.
 type Processor func(ctx context.Context, sig Signal) error
 
+// CombineProcessors takes a slice of processors and runs them in sequence
 func CombineProcessors(ps []Processor) Processor {
 	return func(ctx context.Context, sig Signal) error {
 		for i, p := range ps {
@@ -34,8 +35,8 @@ type Sender interface {
 	FlushBuffer(ctx context.Context, err *error) error
 }
 
-// Reciever presents the service responsible for recieving signals in raw format,
-// and process them using the givne processor.
+// Receiver presents the service responsible for receiving signals in raw format
+// and process them using the given processor.
 type Receiver interface {
 	Receive(ctx context.Context, data [][]byte, p Processor) error
 }
@@ -53,7 +54,7 @@ type Monitor interface {
 }
 
 // Signal presents an internal event used for Interprocess communication (IPC).
-// It's used in a light pub/sub to keep internal services decoupled, and ensure an unified language.
+// It's used in a light pub/sub to keep internal services decoupled and ensures an unified language between components.
 type Signal interface {
 	// SignalName returns the signal name aka ID
 	SignalName() string
