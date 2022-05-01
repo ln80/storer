@@ -9,7 +9,7 @@ type Version string
 // VERSION is the current version of the Storer Go Module.
 const VERSION Version = "v0.1.0"
 
-// Semver parses and returns semver
+// Semver parses and returns semver.
 func (v Version) Semver() *semver.Version {
 	return semver.MustParse(string(v))
 }
