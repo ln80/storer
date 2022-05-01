@@ -1,4 +1,4 @@
-name: Test, Build, and Publish Storer stack@basic
+name: Storer stack@basic Test and Publish
 
 on:
   push:
