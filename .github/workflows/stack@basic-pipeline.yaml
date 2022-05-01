@@ -1,14 +1,12 @@
-name: Stack@basic Build & Publish pipeline
+name: Test, Build, and Publish Storer stack@basic
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'stacks/basic/**'
   pull_request:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'stacks/basic/**'
 
@@ -17,7 +15,7 @@ on:
     # working-directory: stacks/basic
 
 jobs:
-  build-publish:
+  test-build-publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2

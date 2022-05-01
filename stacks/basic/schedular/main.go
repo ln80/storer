@@ -42,7 +42,6 @@ func makeHandler(monitor signal.Monitor, sender signal.Sender) handler {
 			}
 		}
 
-		// err = errors.New("fake error test alarm")
 		return
 	}
 }
