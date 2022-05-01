@@ -60,7 +60,7 @@ jobs:
         if: ${{ (steps.version-changed.outputs.any_changed == 'true') && (github.event_name == 'push') }}
         run: |
           tag=${{ env.STORER_VERSION }}
-          message='${{ tag }}: PR #${{ github.event.pull_request.number }} ${{ github.event.pull_request.title }}'
+          message="${tag}: PR #${github.event.pull_request.number} ${github.event.pull_request.title}"
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
           git tag -a "${tag}" -m "${message}"
