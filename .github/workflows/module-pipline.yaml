@@ -9,7 +9,6 @@ on:
 jobs:
   test-release:
     runs-on: ubuntu-latest
-    name: Test and Release Storer Go Module 
     services:
       dynamodb:
         image: amazon/dynamodb-local
@@ -60,8 +59,7 @@ jobs:
         if: ${{ (steps.version-changed.outputs.any_changed == 'true') && (github.event_name == 'push') }}
         run: |
           tag=${{ env.STORER_VERSION }}
-          message='PR #${{ github.event.pull_request.number }} ${{ github.event.pull_request.title }}'
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-          git tag -a "${tag}" -m "${message}"
+          git tag -a "${tag}"
           git push origin "${tag}" 
