@@ -52,7 +52,7 @@ jobs:
 
       - name: List all changed files
         run: |
-          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          for file in ${{ steps.changed-files.outputs.modified_files }}; do
             echo "$file was changed"
           done
       
@@ -60,9 +60,17 @@ jobs:
         if: ${{ (steps.version-changed.outputs.any_changed == 'true') && (github.event_name == 'push') }}
         run: |
           grep 'const VERSION' version.go | sed -e 's/const VERSION Version = "\(v[^"]*\)"/STORER_VERSION=\1/' >> $GITHUB_ENV
+          grep 'const VERSION' version.go | sed -e 's/const VERSION Version = "\(v[^"]*\)"/STORER_VERSION=\1/'
       
       - name: "Release Tag"
         if: ${{ (steps.version-changed.outputs.any_changed == 'true') && (github.event_name == 'push') }}
-        uses: actions-ecosystem/action-push-tag@v1
-        with:
-          tag: ${{ env.STORER_VERSION }}    
+        # uses: actions-ecosystem/action-push-tag@v1
+        # with:
+        #   tag: ${{ env.STORER_VERSION }} 
+        run: |
+          tag=${{ env.STORER_VERSION }}
+          message='${tag}: PR #${{ github.event.pull_request.number }} ${{ github.event.pull_request.title }}'
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+          git tag -a "${tag}" -m "${message}"
+          git push origin "${tag}" 
