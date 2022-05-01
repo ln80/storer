@@ -46,19 +46,25 @@ jobs:
           S3_ENDPOINT: http://localhost:8071
 
       - name: Verify Version Is Changed
-        uses: redaLaanait/version-changed@v9
+        uses: tj-actions/changed-files@v19
         id: version-changed
         with:
           files: |
              version.go
 
+      - name: List all changed files
+        run: |
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "$file was changed"
+          done
+      
       - name: Read Current Version
-        if: ${{ (steps.version-changed.outputs.files_changed == 'true') && (github.event_name == 'push') }}
+        if: ${{ (steps.version-changed.outputs.any_changed == 'true') && (github.event_name == 'push') }}
         run: |
           grep 'const VERSION' version.go | sed -e 's/const VERSION Version = "\(v[^"]*\)"/STORER_VERSION=\1/' >> $GITHUB_ENV
       
       - name: "Release Tag"
-        if: ${{ (steps.version-changed.outputs.files_changed == 'true') && (github.event_name == 'push') }}
-        uses: redaLaanait/action-push-tag@v1
+        if: ${{ (steps.version-changed.outputs.any_changed == 'true') && (github.event_name == 'push') }}
+        uses: actions-ecosystem/action-push-tag@v1
         with:
           tag: ${{ env.STORER_VERSION }}    

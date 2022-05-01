@@ -6,7 +6,7 @@ import (
 
 type Version string
 
-// VERSION is the current version of the Storer library.
+// VERSION is the current version of the Storer Go Module.
 const VERSION Version = "v0.1.0"
 
 // Semver parses and returns semver
