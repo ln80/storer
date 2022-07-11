@@ -3,6 +3,7 @@ package dynamo
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -54,6 +55,63 @@ func makeRecord(ser event.Serializer, gstmID string, envs []event.Envelope) Reco
 			HashKey: gstmID,
 		},
 		Events: chunk,
+	}
+}
+
+func TestNewForwarder(t *testing.T) {
+
+	tcs := []struct {
+		dbsvc AdminAPI
+		table string
+		pub   event.Publisher
+		ok    bool
+	}{
+		{
+			dbsvc: nil,
+			table: "table name",
+			ok:    false,
+		},
+		{
+			dbsvc: dbsvc,
+			table: "",
+			ok:    false,
+		},
+		{
+			dbsvc: dbsvc,
+			table: "table name",
+			pub:   nil,
+			ok:    false,
+		},
+		{
+			dbsvc: nil,
+			table: "",
+			ok:    false,
+		},
+		{
+			dbsvc: dbsvc,
+			table: "table name",
+			pub:   &publisherMock{},
+			ok:    true,
+		},
+	}
+
+	for i, tc := range tcs {
+		t.Run("tc:"+strconv.Itoa(i), func(t *testing.T) {
+			defer func() {
+				if tc.ok {
+					if r := recover(); r != nil {
+						t.Fatal("expect to not panics, got", r)
+					}
+				} else {
+					if r := recover(); r == nil {
+						t.Fatal("expect to panics")
+					}
+				}
+
+			}()
+
+			NewForwarder(tc.dbsvc, tc.table, nil, tc.pub)
+		})
 	}
 }
 

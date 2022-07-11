@@ -88,6 +88,12 @@ type store struct {
 
 // NewEventStore a dynamodb implementation of both event.Store and sourcing.Store
 func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) EventStore {
+	if svc == nil {
+		panic("event store invalid Dynamodb client: nil value")
+	}
+	if table == "" {
+		panic("event store invalid Dynamodb table name: empty value")
+	}
 	s := &store{
 		svc:   svc,
 		table: table,

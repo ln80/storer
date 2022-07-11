@@ -25,12 +25,21 @@ type ForwarderConfig struct {
 	Serializer event.Serializer
 }
 
-// Persister define the service that persists chunks in a durable store e.g S3
+// Persister defines the service that persists chunks in a durable store e.g S3
 type Persister interface {
 	Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error
 }
 
 func NewForwarder(dbsvc ClientAPI, table string, per Persister, pub event.Publisher, opts ...func(cfg *ForwarderConfig)) Forwarder {
+	if dbsvc == nil {
+		panic("event forwarder invalid Dynamodb client: nil value")
+	}
+	if table == "" {
+		panic("event forwarder invalid Dynamodb table name: empty value")
+	}
+	if pub == nil {
+		panic("event forwarder invalid publisher: nil value")
+	}
 	fwd := &forwarder{
 		svc:       dbsvc,
 		table:     table,
@@ -78,9 +87,11 @@ func (f *forwarder) Forward(ctx context.Context, recs []Record) error {
 	}
 
 	// persist enriched events in a permanent store
-	for gstmID, evs := range mevs {
-		if err := f.persister.Persist(ctx, event.NewStreamID(gstmID), evs); err != nil {
-			return err
+	if f.persister != nil {
+		for gstmID, evs := range mevs {
+			if err := f.persister.Persist(ctx, event.NewStreamID(gstmID), evs); err != nil {
+				return err
+			}
 		}
 	}
 
