@@ -16,7 +16,8 @@ type Event1 struct {
 	Val string
 }
 type Event2 struct {
-	Val string
+	ID  string `pii:"subjectID"`
+	Val string `pii:"data"`
 }
 
 func (e *Event2) EvDests() []string {
@@ -30,7 +31,7 @@ func GenEvts(count int) []interface{} {
 	for i := 0; i < count; i++ {
 		var evt interface{}
 		if i%2 == 0 {
-			evt = &Event2{"val " + strconv.Itoa(i)}
+			evt = &Event2{ID: strconv.Itoa(i), Val: "val " + strconv.Itoa(i)}
 		} else {
 			evt = &Event1{"val " + strconv.Itoa(i)}
 		}
