@@ -38,7 +38,7 @@ publish:
 	sam publish --template packaged.yaml --region eu-west-1
 
 unit-test/run:
-	go test --tags=unit -race -cover ./...
+	go test --tags=unit -race -cover -v ./...
 
 integ-test/deploy:
 	sam deploy \
@@ -55,7 +55,7 @@ integ-test/clear:
 	sam delete --no-prompts --stack-name $(STACK_NAME) --region $(REGION)
 
 integ-test/run:
-	go test --tags=integration -race -cover ./integ_test.go
+	go test --tags=integ -race -cover -v
 
 # old integ test runner with local lambda
 # sam local invoke \

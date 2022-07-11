@@ -1,3 +1,5 @@
+//go:build integ
+
 package main
 
 import (
@@ -41,6 +43,7 @@ func TestIntegration(t *testing.T) {
 	if err != nil {
 		log.Fatalf("failed to get env vars: %v", err)
 	}
+	log.Println("env vars", table, bucket, schedularFn)
 
 	dbsvc, s3svc, _, err := utils.InitAWSClients()
 	if err != nil {
