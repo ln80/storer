@@ -139,9 +139,10 @@ func resolveStmID(env Envelope, isgstm bool) string {
 
 // Validation presents the stream validation options
 type Validation struct {
-	GlobalStream bool
-	Filter       StreamFilter
-	SkipVersion  bool
+	GlobalStream  bool
+	Filter        StreamFilter
+	SkipVersion   bool
+	SkipTimeStamp bool
 }
 
 // ValidateEvent validates the event according to its sequence in the stream
@@ -165,6 +166,7 @@ func ValidateEvent(env Envelope, cur *Cursor, opts ...func(v *Validation)) (igno
 		if ver.IsZero() {
 			return false, Err(ErrInvalidStream, cur.StmID, "invalid evt version: "+ver.String())
 		}
+		// return "to ignore" flag if event if out of range
 		if ver.Before(v.Filter.From) || ver.After(v.Filter.To) {
 			return true, nil
 		}
@@ -179,20 +181,22 @@ func ValidateEvent(env Envelope, cur *Cursor, opts ...func(v *Validation)) (igno
 		}
 	}
 
-	at := env.At()
-	if at.IsZero() || at.Equal(time.Unix(0, 0)) {
-		return false, Err(ErrInvalidStream, cur.StmID, "invalid evt timstamp: "+at.String())
-	}
-	if at.Before(v.Filter.Since) || at.After(v.Filter.Until) {
-		return true, nil
-	}
-	if cur.At.IsZero() || cur.At.Equal(time.Unix(0, 0)) && at.Equal(v.Filter.Since) {
-		cur.At = at
-	} else {
-		if at.After(cur.At) {
+	if !v.SkipTimeStamp {
+		at := env.At()
+		if at.IsZero() || at.Equal(time.Unix(0, 0)) {
+			return false, Err(ErrInvalidStream, cur.StmID, "invalid evt timestamp: "+at.String())
+		}
+		// return "to ignore" flag if event if out of range
+		if at.Before(v.Filter.Since) || at.After(v.Filter.Until) {
+			return true, nil
+		}
+		if cur.At.IsZero() || cur.At.Equal(time.Unix(0, 0)) && at.Equal(v.Filter.Since) {
 			cur.At = at
 		} else {
-			return false, Err(ErrInvalidStream, cur.StmID, "invalid timestamp sequence: "+cur.At.String()+","+at.String())
+			if at.Before(cur.At) {
+				return false, Err(ErrInvalidStream, cur.StmID, "invalid timestamp sequence: "+cur.At.String()+","+at.String())
+			}
+			cur.At = at
 		}
 	}
 

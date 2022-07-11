@@ -55,6 +55,7 @@ func (s *Stream) Validate() error {
 	return s.events.Validate(func(v *event.Validation) {
 		v.GlobalStream = false
 		v.SkipVersion = false
+		v.SkipTimeStamp = false
 	})
 }
 
