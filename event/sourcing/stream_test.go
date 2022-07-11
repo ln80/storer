@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/event/testutil"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/event/testutil"
 )
 
 func TestStream(t *testing.T) {

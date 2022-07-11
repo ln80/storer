@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/signal"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/signal"
 )
 
 func TestSignalManager(t *testing.T) {

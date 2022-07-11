@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/testutil"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/testutil"
 )
 
 const msgGroupID = "eventGrpID"

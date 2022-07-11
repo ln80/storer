@@ -9,10 +9,10 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/redaLaanait/storer/dynamo"
-	"github.com/redaLaanait/storer/s3"
-	"github.com/redaLaanait/storer/sqs"
-	"github.com/redaLaanait/storer/stacks/utils"
+	"github.com/ln80/storer/dynamo"
+	"github.com/ln80/storer/s3"
+	"github.com/ln80/storer/sqs"
+	"github.com/ln80/storer/stacks/utils"
 )
 
 var fwd dynamo.Forwarder

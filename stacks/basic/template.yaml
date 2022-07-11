@@ -12,9 +12,9 @@ Metadata:
     LicenseUrl: LICENSE.txt
     ReadmeUrl: README.md
     Labels: ['event-store', 'event-sourcing', 'ddd', 'dynamodb', 's3']
-    HomePageUrl: https://github.com/redaLaanait/storer/stacks/basic
+    HomePageUrl: https://github.com/ln80/storer/stacks/basic
     SemanticVersion: 0.0.1
-    SourceCodeUrl: https://github.com/redaLaanait/storer/stacks/basic
+    SourceCodeUrl: https://github.com/ln80/storer/stacks/basic
 
 Globals:
   Function:

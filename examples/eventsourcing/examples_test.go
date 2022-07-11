@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/event/sourcing"
-	"github.com/redaLaanait/storer/examples/eventsourcing/bank"
-	"github.com/redaLaanait/storer/memory"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/event/sourcing"
+	"github.com/ln80/storer/examples/eventsourcing/bank"
+	"github.com/ln80/storer/memory"
 )
 
 func Example() {
@@ -41,7 +41,6 @@ func Example() {
 
 	// flush changes to event store
 	if err := store.AppendToStream(ctx, sourcing.Envelop(ctx, stmID, event.VersionZero, acc.EvClearChanges())); err != nil {
-		// todo in case of conflict err [resolve then] retry
 		log.Fatal(err)
 	}
 

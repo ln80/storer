@@ -8,11 +8,11 @@ import (
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/redaLaanait/storer/dynamo"
-	"github.com/redaLaanait/storer/internal/timeutil"
-	"github.com/redaLaanait/storer/signal"
-	"github.com/redaLaanait/storer/sqs"
-	"github.com/redaLaanait/storer/stacks/utils"
+	"github.com/ln80/storer/dynamo"
+	"github.com/ln80/storer/internal/timeutil"
+	"github.com/ln80/storer/signal"
+	"github.com/ln80/storer/sqs"
+	"github.com/ln80/storer/stacks/utils"
 )
 
 var (

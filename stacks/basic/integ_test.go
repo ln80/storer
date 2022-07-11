@@ -10,11 +10,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
-	"github.com/redaLaanait/storer/dynamo"
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/s3"
-	"github.com/redaLaanait/storer/stacks/utils"
-	"github.com/redaLaanait/storer/testutil"
+	"github.com/ln80/storer/dynamo"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/s3"
+	"github.com/ln80/storer/stacks/utils"
+	"github.com/ln80/storer/testutil"
 )
 
 func integTestEnvVars() (table, bucket, schedularFn string, err error) {

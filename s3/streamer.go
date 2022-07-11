@@ -14,10 +14,9 @@ import (
 	s3manager "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/redaLaanait/storer/event"
-	intevent "github.com/redaLaanait/storer/internal/event"
-	"github.com/redaLaanait/storer/internal/timeutil"
-	"github.com/redaLaanait/storer/json"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/internal/timeutil"
+	"github.com/ln80/storer/json"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -38,6 +37,11 @@ var (
 	ErrStreamMergeChunksFailed = errors.New("merge stream chunks failed")
 	ErrStreamLoadChunksFailed  = errors.New("load stream chunks failed")
 )
+
+// Persister define the service that persists chunks in a durable store e.g S3
+type Persister interface {
+	Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error
+}
 
 var objectKeyReg = regexp.MustCompile(
 	"(\\w+)\\/(\\w+)\\/(\\w+)\\/(\\w+)\\/(\\w+)\\/v(\\w+\\.\\w+)_(\\w+\\.\\w+)\\.(\\w+)",
@@ -149,13 +153,13 @@ type StreamMaintainer interface {
 }
 
 var (
-	_ StreamMaintainer   = &streamer{}
-	_ intevent.Persister = &streamer{}
+	_          StreamMaintainer = &streamer{}
+	_Persister                  = &streamer{}
 )
 
 func newStreamService(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)) *streamer {
 	if svc == nil {
-		panic("streamer  invalid S3 client: nil value")
+		panic("streamer invalid S3 client: nil value")
 	}
 
 	stmer := &streamer{
@@ -182,7 +186,7 @@ func NewStreamer(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)
 	return newStreamService(svc, bucket, opts...)
 }
 
-func NewStreamePersister(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)) intevent.Persister {
+func NewStreamePersister(svc ClientAPI, bucket string, opts ...func(cfg *StreamerConfig)) Persister {
 	return newStreamService(svc, bucket, opts...)
 }
 

@@ -12,9 +12,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/event/sourcing"
-	"github.com/redaLaanait/storer/json"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/event/sourcing"
+	"github.com/ln80/storer/json"
 )
 
 const (
@@ -59,10 +59,12 @@ func recordRangeKeyWithVersion(stmID event.StreamID, ver event.Version) string {
 }
 
 var (
-	_ eventStore = &store{}
+	_ EventStore = &store{}
 )
 
-type eventStore interface {
+// EventStore presents the interface implemented by the dynamodb package.
+// It combines the event store (aka event logging store) and the event sourcing store in a single interface.
+type EventStore interface {
 	event.Store
 	sourcing.Store
 }
@@ -85,7 +87,7 @@ type store struct {
 }
 
 // NewEventStore a dynamodb implementation of both event.Store and sourcing.Store
-func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) eventStore {
+func NewEventStore(svc ClientAPI, table string, opts ...func(*StoreConfig)) EventStore {
 	s := &store{
 		svc:   svc,
 		table: table,

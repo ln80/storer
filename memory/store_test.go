@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/testutil"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/testutil"
 )
 
 func TestEventStore(t *testing.T) {

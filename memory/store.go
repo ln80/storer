@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/event/sourcing"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/event/sourcing"
 )
 
 type sortableUID string
@@ -23,6 +23,8 @@ type store struct {
 	evtIDs map[string]sortableUID
 }
 
+// EventStore presents the interface implemented by the in-memory package.
+// It combines event store (aka event logging store), event sourcing store and the streamer in a single interface.
 type EventStore interface {
 	event.Store
 	sourcing.Store

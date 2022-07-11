@@ -79,9 +79,6 @@ type Streamer interface {
 	Replay(ctx context.Context, stmID StreamID, f StreamFilter, h StreamHandler) error
 }
 
-// StreamOptions presents a functional configuration of streaming queries
-// type StreamOption func(f *StreamFilter)
-
 // StreamHandler process the given event in the replay stream process
 type StreamHandler func(ctx context.Context, ev Envelope) error
 

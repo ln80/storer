@@ -3,7 +3,7 @@ package sourcing
 import (
 	"context"
 
-	"github.com/redaLaanait/storer/event"
+	"github.com/ln80/storer/event"
 )
 
 type Store interface {

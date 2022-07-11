@@ -6,10 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
-	intevent "github.com/redaLaanait/storer/internal/event"
-	"github.com/redaLaanait/storer/json"
-	"github.com/redaLaanait/storer/testutil"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/json"
+	"github.com/ln80/storer/testutil"
 )
 
 type publisherMock struct {
@@ -35,7 +34,7 @@ type persisterMock struct {
 	traces map[string][]event.Envelope
 }
 
-var _ intevent.Persister = &persisterMock{}
+var _ Persister = &persisterMock{}
 
 func (p *persisterMock) Persist(ctx context.Context, stmID event.StreamID, envs event.Stream) error {
 	if p.err != nil {

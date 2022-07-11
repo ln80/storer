@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/redaLaanait/storer/event"
+	"github.com/ln80/storer/event"
 )
 
 const (

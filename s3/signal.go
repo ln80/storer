@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/signal"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/signal"
 )
 
 // MakeSignalProcessor returns a processor that handles internal signals under the S3 package

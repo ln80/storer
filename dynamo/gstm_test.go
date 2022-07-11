@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/redaLaanait/storer/event"
+	"github.com/ln80/storer/event"
 )
 
 func genGSTMTestEvt(ctx context.Context, stmID event.StreamID) event.Envelope {

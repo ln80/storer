@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redaLaanait/storer/event/testutil"
+	"github.com/ln80/storer/event/testutil"
 )
 
 func TestEnvelope(t *testing.T) {

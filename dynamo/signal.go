@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/redaLaanait/storer/signal"
+	"github.com/ln80/storer/signal"
 )
 
 type monitor struct {
