@@ -59,7 +59,8 @@ jobs:
         if: ${{ (steps.version-changed.outputs.any_changed == 'true') && (github.event_name == 'push') }}
         run: |
           tag=${{ env.STORER_VERSION }}
+          msg="${{ github.event.head_commit.message }}"
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-          git tag -a "${tag}"
+          git tag -a "${tag}" -m "${msg}"
           git push origin "${tag}" 
