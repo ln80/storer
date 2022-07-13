@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/redaLaanait/storer/event/testutil"
+	"github.com/ln80/storer/event/testutil"
 )
 
 func TestTypeOf(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
+	"github.com/ln80/storer/event"
 )
 
 func retry(attempts int, sleep time.Duration, f func() error) error {

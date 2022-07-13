@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/redaLaanait/storer/event/testutil"
+	"github.com/ln80/storer/event/testutil"
 )
 
 func TestRegister(t *testing.T) {

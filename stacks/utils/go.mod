@@ -1,3 +1,3 @@
-module github.com/redaLaanait/storer/stacks/utils
+module github.com/ln80/storer/stacks/utils
 
 go 1.17

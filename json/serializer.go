@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
+	"github.com/ln80/storer/event"
+	intevent "github.com/ln80/storer/internal/event"
 )
 
 // convertEvent takes an event.Envelope an convert it to a jsonEvent type.
@@ -366,4 +367,12 @@ func (e *jsonEvent) SetGlobalVersion(v event.Version) event.Envelope {
 	e.fGlobalVersion = v
 	e.FRawGlobalVersion = e.fGlobalVersion.String()
 	return e
+}
+
+var _ intevent.Transformer = &jsonEvent{}
+
+func (e *jsonEvent) Transform(fn func(interface{}) interface{}) {
+	if e.Event() != nil {
+		e.fEvent = fn(e.fEvent)
+	}
 }

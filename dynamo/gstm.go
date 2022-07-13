@@ -13,7 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/redaLaanait/storer/event"
+	"github.com/ln80/storer/event"
 )
 
 var (
@@ -264,7 +264,6 @@ func (f GSTMFilter) build() (filter expression.ConditionBuilder) {
 	if l := len(f.StreamIDs); l > 0 {
 		ops := []expression.OperandBuilder{}
 		for i := 0; i < l; i++ {
-			ops = append(ops, expression.Value(f.StreamIDs[i]))
 			ops = append(ops, expression.Value(f.StreamIDs[i]))
 		}
 		idsF = expression.Name("stmID").In(ops[0], ops[1:l]...)

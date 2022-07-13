@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redaLaanait/storer/event/testutil"
+	"github.com/ln80/storer/event/testutil"
 )
 
 func TestStreamID(t *testing.T) {

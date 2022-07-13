@@ -3,6 +3,8 @@ package event
 import (
 	"context"
 	"time"
+
+	intevent "github.com/ln80/storer/internal/event"
 )
 
 //Envelope wraps and adds meta-data to events such us timestamp, stream ID, version
@@ -172,4 +174,10 @@ func (e *envelope) SetGlobalVersion(v Version) Envelope {
 func (e *envelope) SetDests(dests []string) Envelope {
 	e.dests = dests
 	return e
+}
+
+var _ intevent.Transformer = &envelope{}
+
+func (e *envelope) Transform(fn func(interface{}) interface{}) {
+	e.event = fn(e.event)
 }

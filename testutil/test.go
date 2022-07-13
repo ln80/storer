@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/event/sourcing"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/event/sourcing"
 )
 
 func EventStoreTest(t *testing.T, ctx context.Context, store event.Store) {

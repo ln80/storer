@@ -3,9 +3,8 @@ package dynamo
 import (
 	"context"
 
-	"github.com/redaLaanait/storer/event"
-	intevent "github.com/redaLaanait/storer/internal/event"
-	"github.com/redaLaanait/storer/json"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/json"
 )
 
 // Forwarder defines the service responsible for forwarding events from the dynamodb change stream
@@ -17,7 +16,7 @@ type Forwarder interface {
 type forwarder struct {
 	svc       ClientAPI
 	table     string
-	persister intevent.Persister
+	persister Persister
 	publisher event.Publisher
 	*ForwarderConfig
 }
@@ -26,7 +25,21 @@ type ForwarderConfig struct {
 	Serializer event.Serializer
 }
 
-func NewForwarder(dbsvc ClientAPI, table string, per intevent.Persister, pub event.Publisher, opts ...func(cfg *ForwarderConfig)) Forwarder {
+// Persister defines the service that persists chunks in a durable store e.g S3
+type Persister interface {
+	Persist(ctx context.Context, stmID event.StreamID, evts event.Stream) error
+}
+
+func NewForwarder(dbsvc ClientAPI, table string, per Persister, pub event.Publisher, opts ...func(cfg *ForwarderConfig)) Forwarder {
+	if dbsvc == nil {
+		panic("event forwarder invalid Dynamodb client: nil value")
+	}
+	if table == "" {
+		panic("event forwarder invalid Dynamodb table name: empty value")
+	}
+	if pub == nil {
+		panic("event forwarder invalid publisher: nil value")
+	}
 	fwd := &forwarder{
 		svc:       dbsvc,
 		table:     table,
@@ -74,9 +87,11 @@ func (f *forwarder) Forward(ctx context.Context, recs []Record) error {
 	}
 
 	// persist enriched events in a permanent store
-	for gstmID, evs := range mevs {
-		if err := f.persister.Persist(ctx, event.NewStreamID(gstmID), evs); err != nil {
-			return err
+	if f.persister != nil {
+		for gstmID, evs := range mevs {
+			if err := f.persister.Persist(ctx, event.NewStreamID(gstmID), evs); err != nil {
+				return err
+			}
 		}
 	}
 

@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redaLaanait/storer/event"
-	intevent "github.com/redaLaanait/storer/internal/event"
-	"github.com/redaLaanait/storer/testutil"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/testutil"
 )
 
 func TestEventStreamer_Persist(t *testing.T) {
@@ -23,7 +22,7 @@ func TestEventStreamer_Persist(t *testing.T) {
 
 		t.Run("test persist stream chunk with invalid stmID", func(t *testing.T) {
 			gstmID := event.NewStreamID("")
-			err := streamer.(intevent.Persister).Persist(ctx, gstmID,
+			err := streamer.(Persister).Persist(ctx, gstmID,
 				event.Envelop(ctx, gstmID, []interface{}{
 					&testutil.Event1{
 						Val: "test",
@@ -37,7 +36,7 @@ func TestEventStreamer_Persist(t *testing.T) {
 
 		t.Run("test persist stream chunk with invalid stream global version", func(t *testing.T) {
 			nokVer := event.NewVersion()
-			err := streamer.(intevent.Persister).Persist(ctx, gstmID, event.Envelop(ctx, gstmID, []interface{}{
+			err := streamer.(Persister).Persist(ctx, gstmID, event.Envelop(ctx, gstmID, []interface{}{
 				&testutil.Event1{
 					Val: "test 1",
 				},
@@ -66,7 +65,7 @@ func TestEventStreamer_Persist(t *testing.T) {
 				env.SetGlobalVersion(okVer)
 				okVer = okVer.Incr()
 			})
-			if err := streamer.(intevent.Persister).Persist(ctx, gstmID, chunk); err != nil {
+			if err := streamer.(Persister).Persist(ctx, gstmID, chunk); err != nil {
 				t.Fatalf("expect err be nil, got: %v", err)
 			}
 
@@ -108,14 +107,14 @@ func TestEventStreamer_Replay(t *testing.T) {
 			gver = gver.Incr()
 			chunk1At = chunk1At.Add(5 * time.Millisecond)
 		})
-		if err := streamer.(intevent.Persister).Persist(ctx, gstmID, chunk1); err != nil {
+		if err := streamer.(Persister).Persist(ctx, gstmID, chunk1); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 		chunk2 := event.Envelop(ctx, gstmID, testutil.GenEvts(20), func(env event.RWEnvelope) {
 			env.SetGlobalVersion(gver)
 			gver = gver.Incr()
 		})
-		if err := streamer.(intevent.Persister).Persist(ctx, gstmID, chunk2); err != nil {
+		if err := streamer.(Persister).Persist(ctx, gstmID, chunk2); err != nil {
 			t.Fatalf("expect err be nil, got: %v", err)
 		}
 
@@ -213,7 +212,7 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 		chunkSize := 20
 		chunkCount := 10 // 200 events
 		for i := 0; i < chunkCount; i++ {
-			if err := streamer.(intevent.Persister).Persist(ctx, gstmID,
+			if err := streamer.(Persister).Persist(ctx, gstmID,
 				event.Envelop(ctx, gstmID, testutil.GenEvts(chunkSize), func(env event.RWEnvelope) {
 					env.SetGlobalVersion(gver)
 					gver = gver.Incr()
@@ -272,7 +271,7 @@ func TestEventMaintainer_MergeChunks(t *testing.T) {
 
 		// persist a new chunk
 		latestChunkSize := 50
-		if err := streamer.(intevent.Persister).Persist(ctx, gstmID,
+		if err := streamer.(Persister).Persist(ctx, gstmID,
 			event.Envelop(ctx, gstmID, testutil.GenEvts(latestChunkSize), func(env event.RWEnvelope) {
 				env.SetGlobalVersion(gver)
 				gver = gver.Incr()

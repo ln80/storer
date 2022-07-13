@@ -1,3 +1,5 @@
+//go:build integ
+
 package main
 
 import (
@@ -10,11 +12,11 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
-	"github.com/redaLaanait/storer/dynamo"
-	"github.com/redaLaanait/storer/event"
-	"github.com/redaLaanait/storer/s3"
-	"github.com/redaLaanait/storer/stacks/utils"
-	"github.com/redaLaanait/storer/testutil"
+	"github.com/ln80/storer/dynamo"
+	"github.com/ln80/storer/event"
+	"github.com/ln80/storer/s3"
+	"github.com/ln80/storer/stacks/utils"
+	"github.com/ln80/storer/testutil"
 )
 
 func integTestEnvVars() (table, bucket, schedularFn string, err error) {
@@ -41,6 +43,7 @@ func TestIntegration(t *testing.T) {
 	if err != nil {
 		log.Fatalf("failed to get env vars: %v", err)
 	}
+	log.Println("env vars", table, bucket, schedularFn)
 
 	dbsvc, s3svc, _, err := utils.InitAWSClients()
 	if err != nil {

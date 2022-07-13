@@ -3,7 +3,7 @@ package sourcing
 import (
 	"context"
 
-	"github.com/redaLaanait/storer/event"
+	"github.com/ln80/storer/event"
 )
 
 type Store interface {
@@ -55,6 +55,7 @@ func (s *Stream) Validate() error {
 	return s.events.Validate(func(v *event.Validation) {
 		v.GlobalStream = false
 		v.SkipVersion = false
+		v.SkipTimeStamp = false
 	})
 }
 
