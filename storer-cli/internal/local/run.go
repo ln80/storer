@@ -7,8 +7,6 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types"
 	"github.com/ln80/storer/dynamo"
@@ -23,7 +21,7 @@ func checkEndpoint(value string, name string) error {
 	return nil
 }
 
-func Run(appName, dynamodbEndpoint, s3Endpoint, sqsEndpoint, queues string) error {
+func Run(ctx context.Context, appName, dynamodbEndpoint, s3Endpoint, sqsEndpoint, queues string) error {
 	if appName == "" {
 		return fmt.Errorf("invalid application name, empty value found")
 	}
@@ -34,31 +32,18 @@ func Run(appName, dynamodbEndpoint, s3Endpoint, sqsEndpoint, queues string) erro
 	if err := checkEndpoint(dynamodbEndpoint, "dynamodb"); err != nil {
 		return err
 	}
-	if err := checkEndpoint(dynamodbEndpoint, "s3"); err != nil {
+	if err := checkEndpoint(s3Endpoint, "s3"); err != nil {
 		return err
 	}
-	if err := checkEndpoint(dynamodbEndpoint, "sqs"); err != nil {
+	if err := checkEndpoint(sqsEndpoint, "sqs"); err != nil {
 		return err
 	}
 
-	// ctx, stop := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGQUIT)
-	// defer stop()
-	sigchan := make(chan os.Signal, 1)
-	signal.Notify(sigchan, syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGQUIT)
-	ctx, stop := context.WithCancel(context.Background())
-	go func() {
-		oscall := <-sigchan
-		log.Printf("system call:%+v", oscall)
-		stop()
-	}()
-
-	table := internalTableName(appName)
+	table := eventTableName(appName)
 	bucket := eventBucketName(appName)
 	internalBucket := internalBucketName(appName)
 
-	log.Println("[DEBUG] Local Resources ", table, bucket, internalBucket)
+	log.Println("[DEBUG] local resources ", table, bucket, internalBucket)
 	cfg, err := awsConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load aws config: %v", err)
@@ -76,7 +61,7 @@ func Run(appName, dynamodbEndpoint, s3Endpoint, sqsEndpoint, queues string) erro
 		return fmt.Errorf("create event bucket '%s' failed: %v", bucket, err)
 	}
 
-	if err := createTableIfNotExist(ctx, dbClient, table); err != nil {
+	if err := createEventTableIfNotExist(ctx, dbClient, table); err != nil {
 		return fmt.Errorf("create event table '%s' failed: %v", table, err)
 	}
 
@@ -85,25 +70,19 @@ func Run(appName, dynamodbEndpoint, s3Endpoint, sqsEndpoint, queues string) erro
 		_sqs.NewPublisher(sqsClient, queueMap),
 	)
 
-	poller := NewPoller(appName, dbClient, streamClient, table, s3Client, internalBucket)
+	return newStreamPoller(dbClient, streamClient, table, s3Client, internalBucket).
+		OnChange(func(rec *types.Record) error {
+			r, err := fromDynamodbStreamsToRecord(rec.Dynamodb.NewImage)
+			if err != nil {
+				return err
+			}
 
-	err = poller.OnChange(func(rec *types.Record) error {
-		if key := rec.Dynamodb.NewImage["_pk"].(*types.AttributeValueMemberS).Value; key == "internal" {
-			return nil
-		}
-		r, err := fromDynamodbStreamsToRecord(rec.Dynamodb.NewImage)
-		if err != nil {
-			return err
-		}
+			b, _ := json.Marshal(r)
+			log.Println("[DEBUG] stream changes", string(b), err)
+			if err != nil {
+				return err
+			}
 
-		b, _ := json.Marshal(r)
-		log.Println("[DEBUG] stream changes", string(b), err)
-		if err != nil {
-			return err
-		}
-
-		return fwd.Forward(context.Background(), []dynamo.Record{*r})
-	}).Poll(ctx)
-
-	return err
+			return fwd.Forward(context.Background(), []dynamo.Record{*r})
+		}).Poll(ctx)
 }

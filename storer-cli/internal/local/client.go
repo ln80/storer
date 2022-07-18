@@ -24,45 +24,21 @@ func awsConfig() (aws.Config, error) {
 
 	return config.LoadDefaultConfig(
 		context.Background(),
-		// config.WithRegion(""),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(key, secret, "")),
 	)
 
 }
 func dynamodbClient(cfg aws.Config, endpoint string) *dynamodb.Client {
-	cfg, _ = config.LoadDefaultConfig(
-		context.Background(),
-	)
 	return dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
 		o.EndpointResolver = dynamodb.EndpointResolverFromURL(endpoint)
 	})
 }
 
 func dynamodbStreamClient(cfg aws.Config, endpoint string) *dynamodbstreams.Client {
-	cfg, _ = config.LoadDefaultConfig(
-		context.Background(),
-	)
 	return dynamodbstreams.NewFromConfig(cfg, func(o *dynamodbstreams.Options) {
 		o.EndpointResolver = dynamodbstreams.EndpointResolverFromURL(endpoint)
 	})
 }
-
-// func S3Client(cfg aws.Config, endpoint string) *s3.Client {
-// 	cfg, _ = config.LoadDefaultConfig(
-// 		context.Background(),
-// 		config.WithRegion(""),
-// 		config.WithEndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
-// 			func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-// 				return aws.Endpoint{
-// 					URL:               endpoint,
-// 					HostnameImmutable: true,
-// 				}, nil
-// 			})),
-// 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("minioadmin", "minioadmin", "")),
-// 	)
-
-// 	return s3.NewFromConfig(cfg)
-// }
 
 func s3Client(cfg aws.Config, endpoint string) *s3.Client {
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {

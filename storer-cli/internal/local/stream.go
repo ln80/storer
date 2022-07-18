@@ -16,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/ln80/storer/storer-cli/internal"
 )
 
 const (
@@ -73,33 +74,8 @@ func (cfg *PollerConfig) addChard(shard types.Shard) {
 	cfg.lastStreamConfig().Chards[*shard.ShardId] = shard
 }
 
-func Retry(attempts int, sleep time.Duration, f func() error) error {
-	if err := f(); err != nil {
-		log.Println("[ERROR] Retry:", err)
-		if attempts--; attempts > 0 {
-			// Add some randomness to prevent creating a Thundering Herd
-			// jitter := time.Duration(rand.Int63n(int64(sleep)))
-			// sleep = sleep + jitter/2
-
-			time.Sleep(sleep)
-			return Retry(attempts, 2*sleep, f)
-		}
-		return err
-	}
-
-	return nil
-}
-
-func Wait(sleep time.Duration, f func() error) error {
-	if err := f(); err != nil {
-		time.Sleep(sleep)
-	}
-	return nil
-}
-
-type Poller struct {
-	appName string
-	dynamo  struct {
+type streamPoller struct {
+	dynamo struct {
 		table  string
 		svc    *dynamodb.Client
 		stmsvc *dynamodbstreams.Client
@@ -112,15 +88,14 @@ type Poller struct {
 	onChangeFunc func(rec *types.Record) error
 }
 
-func NewPoller(
-	appName string,
+func newStreamPoller(
 	dynamoSvc *dynamodb.Client,
 	streamSvc *dynamodbstreams.Client,
 	table string,
 	s3svc *s3.Client,
 	bucket string,
-) *Poller {
-	p := &Poller{
+) *streamPoller {
+	p := &streamPoller{
 		dynamo: struct {
 			table  string
 			svc    *dynamodb.Client
@@ -141,14 +116,13 @@ func NewPoller(
 	return p
 }
 
-func (p *Poller) OnChange(f func(rec *types.Record) error) *Poller {
+func (p *streamPoller) OnChange(f func(rec *types.Record) error) *streamPoller {
 	p.onChangeFunc = f
 	return p
 }
 
-func (p *Poller) fetchConfig(ctx context.Context) error {
+func (p *streamPoller) fetchConfig(ctx context.Context) error {
 	buf := s3manager.NewWriteAtBuffer([]byte{})
-
 	if _, err := s3manager.NewDownloader(p.s3.svc).Download(ctx, buf, &s3.GetObjectInput{
 		Key:    aws.String(PollerConfigLocation),
 		Bucket: aws.String(p.s3.bucket),
@@ -160,12 +134,6 @@ func (p *Poller) fetchConfig(ctx context.Context) error {
 			}
 			return nil
 		}
-		// if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == "NoSuchKey" {
-		// 	p.PollerConfig = &PollerConfig{
-		// 		Streams: map[string]*StreamConfig{},
-		// 	}
-		// 	return nil
-		// }
 		return err
 	}
 	if err := json.Unmarshal(buf.Bytes(), &p.PollerConfig); err != nil {
@@ -174,7 +142,7 @@ func (p *Poller) fetchConfig(ctx context.Context) error {
 	return nil
 }
 
-func (p *Poller) flushConfig(ctx context.Context) error {
+func (p *streamPoller) flushConfig(ctx context.Context) error {
 	p.PollerConfig.At = time.Now()
 	file, err := json.Marshal(p.PollerConfig)
 	if err != nil {
@@ -194,7 +162,7 @@ func (p *Poller) flushConfig(ctx context.Context) error {
 	return nil
 }
 
-func (p *Poller) getLatestStreamArn(ctx context.Context) (*string, error) {
+func (p *streamPoller) getLatestStreamArn(ctx context.Context) (*string, error) {
 	tableInfo, err := p.dynamo.svc.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(p.dynamo.table)})
 	if err != nil {
 		return nil, err
@@ -205,7 +173,7 @@ func (p *Poller) getLatestStreamArn(ctx context.Context) (*string, error) {
 	return tableInfo.Table.LatestStreamArn, nil
 }
 
-func (p *Poller) getShardsInfos(ctx context.Context, stmArn *string, lastEvaluatedShardID *string) ([]types.Shard, *string, error) {
+func (p *streamPoller) getShardsInfos(ctx context.Context, stmArn *string, lastEvaluatedShardID *string) ([]types.Shard, *string, error) {
 	des, err := p.dynamo.stmsvc.DescribeStream(ctx, &dynamodbstreams.DescribeStreamInput{
 		StreamArn:             stmArn,
 		ExclusiveStartShardId: lastEvaluatedShardID,
@@ -217,16 +185,16 @@ func (p *Poller) getShardsInfos(ctx context.Context, stmArn *string, lastEvaluat
 }
 
 // Poll the last stream of a dynamodb table and process records
-func (p *Poller) Poll(ctx context.Context) (err error) {
+func (p *streamPoller) Poll(ctx context.Context) (err error) {
 	stmArn, err := p.getLatestStreamArn(ctx)
 	if err != nil {
 		return
 	}
-	if err = Retry(5, 1*time.Second, func() error { return p.fetchConfig(ctx) }); err != nil {
+	if err = internal.Retry(5, 1*time.Second, func() error { return p.fetchConfig(ctx) }); err != nil {
 		return
 	}
 	defer func() {
-		graceCtx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		graceCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		// err = Retry(5, 1*time.Second, func() error { return p.flushConfig(graceCtx) })
 		err = p.flushConfig(graceCtx)
 		log.Println("[DEBUG] Gracefully persist checkpoint cursor...", err)
@@ -238,35 +206,44 @@ func (p *Poller) Poll(ctx context.Context) (err error) {
 
 	// start record's processor
 	go func() {
-	procloop:
+	PROC_LOOP:
 		for {
 			select {
 			case rec := <-ch:
 				if aws.ToString(rec.Dynamodb.SequenceNumber) <= p.cursor() {
 					break
 				}
-				_ = Retry(50, 1*time.Second, func() error { return p.onChangeFunc(rec) })
+				if rec.EventName != "INSERT" {
+					break
+				}
+				if key := rec.Dynamodb.NewImage["_pk"].(*types.AttributeValueMemberS).Value; key == "internal" {
+					break
+				}
+				// _ = internal.Retry(50, 1*time.Second, func() error { return p.onChangeFunc(rec) })
+				_ = internal.Wait(1*time.Second, func() error {
+					return p.onChangeFunc(rec)
+				})
 
 				p.setCursor(aws.ToString(rec.Dynamodb.SequenceNumber))
 			case <-ctx.Done():
-				break procloop
+				break PROC_LOOP
 			}
 		}
 	}()
 
 	// start shards pollers
 	var (
-		tick                 <-chan time.Time = time.Tick(1 * time.Second)
-		tickonce             sync.Once
+		ticker               *time.Ticker = time.NewTicker(1 * time.Second)
+		tickerOnce           sync.Once
 		lastEvaluatedShardID *string
 	)
 
-loop:
+LOOP:
 	for {
 		select {
-		case <-tick:
-			tickonce.Do(func() {
-				tick = time.Tick(10 * time.Second)
+		case <-ticker.C:
+			tickerOnce.Do(func() {
+				ticker.Reset(10 * time.Second)
 			})
 			stmshards, lastShardID, perr := p.getShardsInfos(ctx, stmArn, lastEvaluatedShardID)
 			if err != nil {
@@ -303,13 +280,13 @@ loop:
 			}
 			time.Sleep(1 * time.Second)
 		case <-ctx.Done():
-			break loop
+			break LOOP
 		}
 	}
 	return
 }
 
-func (p *Poller) pollShard(stmArn *string, shard *types.Shard, ch chan<- *types.Record) error {
+func (p *streamPoller) pollShard(stmArn *string, shard *types.Shard, ch chan<- *types.Record) error {
 	ctx := context.Background()
 
 	iter, err := p.dynamo.stmsvc.GetShardIterator(ctx, &dynamodbstreams.GetShardIteratorInput{

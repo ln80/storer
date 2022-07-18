@@ -12,11 +12,11 @@ import (
 	"github.com/ln80/storer/storer-cli/internal"
 )
 
-func internalTableName(appName string) string {
+func eventTableName(appName string) string {
 	return internal.Sanitize(appName) + "-event-table"
 }
 
-func createTableIfNotExist(ctx context.Context, client *dynamodb.Client, tableName string) error {
+func createEventTableIfNotExist(ctx context.Context, client *dynamodb.Client, tableName string) error {
 	if err := dynamo.CreateTable(ctx, client, tableName); err != nil {
 
 		var (

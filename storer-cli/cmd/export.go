@@ -28,10 +28,10 @@ func (c *exportCmd) build() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&c.Ctx, "ctx", "c", "", "context aka namespace used as prefix to identify existing events")
-	cmd.Flags().StringVarP(&c.Src, "srcDir", "s", "", "source directory which contains events to export")
-	cmd.Flags().StringVarP(&c.Dest, "destDir", "d", "", "path to events shared repo to which events are exported")
-	cmd.Flags().StringVarP(&c.Module, "modulePath", "m", "", "the Go module path of the events shared repo")
+	cmd.Flags().StringVarP(&c.Ctx, "ctx", "c", "", "Context aka namespace used as prefix to identify existing events.")
+	cmd.Flags().StringVarP(&c.Src, "srcDir", "s", "", "Source directory which contains events to export.")
+	cmd.Flags().StringVarP(&c.Dest, "destDir", "d", "", "Path to events shared repo to which events are exported.")
+	cmd.Flags().StringVarP(&c.Module, "modulePath", "m", "", "The Go module path of the events shared repo.")
 
 	return cmd
 }
