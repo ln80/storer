@@ -25,7 +25,7 @@ func (c *runCmd) build() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run storer event store locally.",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Run: func(cmd *cobra.Command, args []string) {
 			ctx := cmd.Context()
 			if ctx == nil {
 				ctx = context.Background()
@@ -33,7 +33,7 @@ func (c *runCmd) build() *cobra.Command {
 			ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 			defer stop()
 
-			return local.Run(ctx, c.AppName, c.DynamodbEndpoint, c.S3Endpoint, c.SQSEndpoint, c.Queues)
+			local.RunEventStore(ctx, c.AppName, c.DynamodbEndpoint, c.S3Endpoint, c.SQSEndpoint, c.Queues)
 		},
 	}
 

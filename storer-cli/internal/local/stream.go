@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"sync"
 	"time"
 
@@ -17,10 +16,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/ln80/storer/storer-cli/internal"
+	"github.com/ln80/storer/storer-cli/internal/logger"
 )
 
 const (
-
 	// PollerConfigLocation gives dynamodbstreams config file location
 	PollerConfigLocation = "/dynamodbstreams/config.json"
 )
@@ -195,16 +194,16 @@ func (p *streamPoller) Poll(ctx context.Context) (err error) {
 	}
 	defer func() {
 		graceCtx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		// err = Retry(5, 1*time.Second, func() error { return p.flushConfig(graceCtx) })
-		err = p.flushConfig(graceCtx)
-		log.Println("[DEBUG] Gracefully persist checkpoint cursor...", err)
+		if err = p.flushConfig(graceCtx); err != nil {
+			logger.ErrorWithMsg(err, "Dynamodb Stream: failed to save checkpoint cursor")
+		}
+		logger.Info("Dynamodb Stream: Gracefully save checkpoint cursor")
 		cancel()
 	}()
 	p.LastStream = aws.ToString(stmArn)
 
 	var ch chan *types.Record = make(chan *types.Record, 1)
 
-	// start record's processor
 	go func() {
 	PROC_LOOP:
 		for {
@@ -216,12 +215,13 @@ func (p *streamPoller) Poll(ctx context.Context) (err error) {
 				if rec.EventName != "INSERT" {
 					break
 				}
-				if key := rec.Dynamodb.NewImage["_pk"].(*types.AttributeValueMemberS).Value; key == "internal" {
+				key := rec.Dynamodb.NewImage["_pk"].(*types.AttributeValueMemberS).Value
+				if key == "internal" {
 					break
 				}
-				// _ = internal.Retry(50, 1*time.Second, func() error { return p.onChangeFunc(rec) })
+				logger.Info("Dynamodb Stream: Events received", logger.F("StmID", key))
 				_ = internal.Wait(1*time.Second, func() error {
-					return p.onChangeFunc(rec)
+					return logger.Error(p.onChangeFunc(rec))
 				})
 
 				p.setCursor(aws.ToString(rec.Dynamodb.SequenceNumber))
@@ -269,10 +269,13 @@ LOOP:
 							if r := recover(); r != nil {
 								perr = r.(error)
 							}
-							log.Printf("polling shard %s finished, err: %v\n", shardID, perr)
+							logger.Info("Dynamodb Stream: Polling finished", logger.F("shard", shardID))
+							if perr != nil {
+								logger.ErrorWithMsg(perr, "Dynamodb Stream: Polling error occured", logger.F("shard", shardID))
+							}
 							p.clearChard(*shard.ShardId)
 						}()
-						log.Println("start polling shard", shardID)
+						logger.Info("Dynamodb Stream: Start polling", logger.F("shard", shardID))
 						p.addChard(*shard)
 						perr = p.pollShard(stmArn, shard, ch)
 					}(&shard)

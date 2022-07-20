@@ -19,7 +19,7 @@ func awsConfig() (aws.Config, error) {
 		key = os.Getenv("MINIO_ROOT_USER")
 	}
 	if os.Getenv("MINIO_ROOT_PASSWORD ") != "" {
-		key = os.Getenv("MINIO_ROOT_USER")
+		secret = os.Getenv("MINIO_ROOT_USER")
 	}
 
 	return config.LoadDefaultConfig(

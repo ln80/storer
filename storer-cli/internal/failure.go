@@ -22,6 +22,8 @@ func Retry(attempts int, sleep time.Duration, f func() error) error {
 func Wait(sleep time.Duration, f func() error) error {
 	for err := f(); err != nil; {
 		time.Sleep(sleep)
+		err = f()
+		sleep = 2 * sleep
 	}
 	return nil
 }
