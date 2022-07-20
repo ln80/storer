@@ -24,7 +24,7 @@ func ParseQueueMap(str string) (QueueMap, error) {
 			return nil, terr
 		}
 
-		dest, rawUrl := strings.Trim(splits[0], " "), strings.Trim(splits[1], " ")
+		dest, rawUrl := strings.TrimSpace(splits[0]), strings.TrimSpace(splits[1])
 		if dest == "" || rawUrl == "" {
 			return nil, terr
 		}
@@ -36,4 +36,14 @@ func ParseQueueMap(str string) (QueueMap, error) {
 	}
 
 	return m, nil
+}
+
+func (qm QueueMap) WildCards() []string {
+	m := make([]string, 0)
+	for dest := range qm {
+		if dest == "*" || strings.HasPrefix(dest, "*.") {
+			m = append(m, dest)
+		}
+	}
+	return m
 }

@@ -34,7 +34,7 @@ var (
 
 type publisher struct {
 	svc    ClientAPI
-	queues map[string]string
+	queues QueueMap
 	*PublisherConfig
 }
 
@@ -42,7 +42,7 @@ type PublisherConfig struct {
 	Serializer event.Serializer
 }
 
-func NewPublisher(svc ClientAPI, queues map[string]string, opts ...func(cfg *PublisherConfig)) event.Publisher {
+func NewPublisher(svc ClientAPI, queues QueueMap, opts ...func(cfg *PublisherConfig)) event.Publisher {
 	if svc == nil {
 		panic("event publisher invalid SQS client: nil value")
 	}
@@ -65,6 +65,42 @@ func NewPublisher(svc ClientAPI, queues map[string]string, opts ...func(cfg *Pub
 }
 
 var _ event.Publisher = &publisher{}
+
+func (p *publisher) Broadcast(ctx context.Context, mevts map[string][]event.Envelope) error {
+	if len(mevts) == 0 {
+		return nil
+	}
+
+	// skip publish if queues map is empty
+	if p.queues == nil {
+		return nil
+	}
+
+	// publish event to their configured destinations
+	for dest, evs := range event.RouteEvents(mevts) {
+		if err := p.Publish(ctx, dest, evs); err != nil {
+			return err
+		}
+	}
+
+	wcs := p.queues.WildCards()
+	if len(wcs) > 0 {
+		// flatten the events map
+		evts := make([]event.Envelope, 0)
+		for _, s := range mevts {
+			evts = append(evts, s...)
+		}
+		// send events to each defined wildcard destination regardless
+		// of the event-dest mapping.
+		for _, wc := range wcs {
+			if err := p.Publish(ctx, wc, evts); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
 
 func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envelope) error {
 	if len(evts) == 0 {

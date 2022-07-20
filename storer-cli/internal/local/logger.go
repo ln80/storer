@@ -25,6 +25,16 @@ func (p *publishLogger) Publish(ctx context.Context, dest string, evts []event.E
 	return nil
 }
 
+func (p *publishLogger) Broadcast(ctx context.Context, evts map[string][]event.Envelope) error {
+	fields := []logger.Field{logger.F("Total", strconv.Itoa(len(evts)))}
+	if err := p.Origin.Broadcast(ctx, evts); err != nil {
+		logger.ErrorWithMsg(err, "Failed to broadcast events", fields...)
+		return err
+	}
+	logger.Info("Events broadcasted", fields...)
+	return nil
+}
+
 var _ event.Publisher = &publishLogger{}
 
 type persistLogger struct {

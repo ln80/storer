@@ -1,6 +1,7 @@
 package sqs
 
 import (
+	"reflect"
 	"strconv"
 	"testing"
 )
@@ -10,6 +11,8 @@ func TestQueueMap(t *testing.T) {
 		raw   string
 		ok    bool
 		count int
+		hasWC bool
+		wcs   []string
 	}{
 		{
 			raw: "main=;",
@@ -44,6 +47,16 @@ func TestQueueMap(t *testing.T) {
 			ok:    true,
 			count: 2,
 		},
+		{
+			raw: `main=http://dopey-thickness.biz;
+			admin=https://unkempt-verve.org;
+			*=https://spotless-treaty.info;
+			*.1=http://slimy-legging.net`,
+			ok:    true,
+			count: 4,
+			hasWC: true,
+			wcs:   []string{"*", "*.1"},
+		},
 	}
 
 	for i, tc := range tcs {
@@ -52,6 +65,11 @@ func TestQueueMap(t *testing.T) {
 			if tc.ok {
 				if want, got := tc.count, len(m); want != got {
 					t.Fatalf("expect %d, %d be equals", want, got)
+				}
+				if tc.hasWC {
+					if want, got := tc.wcs, m.WildCards(); !reflect.DeepEqual(want, got) {
+						t.Fatalf("expect %v, %v be equals", want, got)
+					}
 				}
 			} else {
 				if err == nil {
