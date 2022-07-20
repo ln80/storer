@@ -8,7 +8,7 @@ import (
 )
 
 func TestTypeOf(t *testing.T) {
-	t.Run("test TypeOf", func(t *testing.T) {
+	t.Run("test type of", func(t *testing.T) {
 		wantT := "testutil.Event"
 		t1, t2 := TypeOf(testutil.Event{}), TypeOf(&testutil.Event{})
 		if t1 != t2 {
@@ -19,7 +19,7 @@ func TestTypeOf(t *testing.T) {
 		}
 	})
 
-	t.Run("test TypeOfWithContext", func(t *testing.T) {
+	t.Run("test type of with namespace", func(t *testing.T) {
 		ctx := context.Background()
 
 		wantT := "testutil.Event"

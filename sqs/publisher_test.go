@@ -11,15 +11,15 @@ import (
 	"github.com/ln80/storer/testutil"
 )
 
-const msgGroupID = "eventGrpID"
+// const msgGroupID = "eventGrpID"
 
 type event1 struct{ Val string }
 
 type event2 struct{ Val string }
 
-func (evt *event2) EvMsgGroupID() string {
-	return msgGroupID
-}
+// func (evt *event2) EvMsgGroupID() string {
+// 	return msgGroupID
+// }
 
 func TestEventPublisher(t *testing.T) {
 	ctx := context.Background()
@@ -106,7 +106,7 @@ func TestEventPublisher(t *testing.T) {
 		if wantl, l := len(envs), len(sqsvc.traces[queues[dest1]]); wantl != l {
 			t.Fatalf("expect traces len be %v, got %d", wantl, l)
 		}
-		if wantgrp, grp := msgGroupID, *sqsvc.traces[queues[dest1]][2].MessageGroupId; wantgrp != grp {
+		if wantgrp, grp := stmID, *sqsvc.traces[queues[dest1]][2].MessageGroupId; wantgrp != grp {
 			t.Fatalf("expect group ids be equals, got %s, %s", wantgrp, grp)
 		}
 	})

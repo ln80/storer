@@ -105,9 +105,6 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 
 		// resolve message group ID
 		msgGroupID := e.GlobalStreamID()
-		if evt, ok := e.Event().(interface{ EvMsgGroupID() string }); ok {
-			msgGroupID = evt.EvMsgGroupID()
-		}
 
 		entry := types.SendMessageBatchRequestEntry{
 			Id:                     aws.String(e.ID()),
@@ -115,9 +112,9 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 			MessageDeduplicationId: aws.String(e.ID()),
 			MessageBody:            aws.String(string(msg)),
 			MessageAttributes: map[string]types.MessageAttributeValue{
-				"GSTMID": {
+				"StmID": {
 					DataType:    aws.String("String"),
-					StringValue: aws.String(e.GlobalStreamID()),
+					StringValue: aws.String(e.StreamID()),
 				},
 				"GVer": {
 					DataType:    aws.String("Number"),
@@ -165,8 +162,8 @@ func (p *publisher) doSendMessageBatch(ctx context.Context, input *sqs.SendMessa
 		return fmt.Errorf("%w: %v", ErrPublishEventFailed, err)
 	}
 
-	attempts := 1
-	for out != nil && len(out.Failed) > 0 && attempts <= 5 {
+	attempts := 0
+	for out != nil && len(out.Failed) > 0 && attempts < 5 {
 		time.Sleep(time.Duration(attempts) * 50 * time.Millisecond)
 		out, err = p.svc.SendMessageBatch(ctx, input)
 		if err != nil {
@@ -176,7 +173,7 @@ func (p *publisher) doSendMessageBatch(ctx context.Context, input *sqs.SendMessa
 	}
 
 	if out != nil && len(out.Failed) > 0 {
-		return fmt.Errorf("%w: failed entries: %v", ErrPublishEventFailed, out.Failed)
+		return fmt.Errorf("%w: failed entries: %v err: %v", ErrPublishEventFailed, out.Failed, err)
 	}
 	return nil
 }

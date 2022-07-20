@@ -4,14 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ln80/storer/event"
 	"github.com/ln80/storer/testutil"
 )
 
 func TestEventStore(t *testing.T) {
-	event.NewRegister("").
-		Set(testutil.Event1{}).
-		Set(testutil.Event2{})
+	testutil.RegisterEvent("")
 
 	ctx := context.Background()
 

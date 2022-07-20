@@ -286,10 +286,10 @@ func (e *jsonEvent) Type() string {
 	return e.FType
 }
 
-// Event return the orignal event wraped in json event envelope.
+// Event returns the orignal (aka domaine event) event wraped in json event envelope.
 // It may returns nil if the event type is not found in the event registry,
 // or the later is not configured in the event.
-// It's up to the client/caller code to tolerate (or not) the enmpty value.
+// It's up to the client/caller code to tolerate (or not) the empty value.
 func (e *jsonEvent) Event() interface{} {
 	if e.fEvent != nil {
 		return e.fEvent
@@ -299,7 +299,7 @@ func (e *jsonEvent) Event() interface{} {
 	}
 	evt, err := e.reg.Get(e.Type())
 	if err != nil {
-		log.Println(event.Err(err, e.StreamID()))
+		log.Println("[STORER][WARNING] Unmarshal event data failed", event.Err(err, e.StreamID()))
 		return nil
 	}
 	if err := json.Unmarshal(e.FRawEvent, evt); err != nil {

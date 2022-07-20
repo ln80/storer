@@ -34,7 +34,7 @@ func RouteEvents(mevs map[string][]Envelope) map[string][]Envelope {
 func eventDests(ctx context.Context, evt interface{}) (dests []string) {
 	pevt, ok := evt.(Publishable)
 	if !ok {
-		evt, err := NewRegisterFrom(ctx).Convert(pevt)
+		evt, err := NewRegisterFrom(ctx).Convert(evt)
 		if err != nil {
 			return
 		}

@@ -8,5 +8,6 @@ func (c ContextKey) String() string {
 
 var (
 	ContextNamespaceKey = ContextKey("namespace")
-	ContextUserKey      = ContextKey("user")
+	// ContextNamespaceKey = "namespace"
+	ContextUserKey = ContextKey("user")
 )

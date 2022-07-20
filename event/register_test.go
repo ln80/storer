@@ -62,11 +62,11 @@ func TestRegister_Convert(t *testing.T) {
 
 	namespace := "testutil"
 
-	// clear event registries before and after test
+	// clear event registry before and after test
 	NewRegister("").clear()
 	defer NewRegister("").clear()
 
-	// testutil.Event is the equivalent of Event
+	// testutil.Event is the equivalent of Event.
 	// Event2 does not have an equivalent in the global registry
 	NewRegister(namespace).
 		Set(&Event{}).
@@ -76,7 +76,9 @@ func TestRegister_Convert(t *testing.T) {
 		Set(&testutil.Event{})
 
 	evt1 := Event{Val: "1"}
-	cevt1, err := NewRegister(namespace).Convert(evt1) // NewRegister("").Convert(evt1) works as well
+
+	// case 1
+	cevt1, err := NewRegister(namespace).Convert(&evt1)
 	if err != nil {
 		t.Fatalf("expect err be nil, got %v", err)
 	}
@@ -88,7 +90,21 @@ func TestRegister_Convert(t *testing.T) {
 		t.Fatalf("expecet %v, %v be equals", want, val)
 	}
 
-	// convert an event that is not registred in the global registry
+	// case 2
+	cevt1, err = NewRegister(namespace).Convert(evt1)
+	if err != nil {
+		t.Fatalf("expect err be nil, got %v", err)
+	}
+	ccevt1, ok = cevt1.(testutil.Event)
+	if !ok {
+		t.Fatalf("expect the converted event type be %T, got false", testutil.Event{})
+	}
+	if want, val := evt1.Val, ccevt1.Val; want != val {
+		t.Fatalf("expecet %v, %v be equals", want, val)
+	}
+
+	// case error
+	// try to convert an event that is not registred in the global registry
 	// must returns a not found error
 	evt2 := Event2{Val: "2"}
 	_, err = NewRegister(namespace).Convert(evt2)

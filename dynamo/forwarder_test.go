@@ -107,7 +107,6 @@ func TestNewForwarder(t *testing.T) {
 						t.Fatal("expect to panics")
 					}
 				}
-
 			}()
 
 			NewForwarder(tc.dbsvc, tc.table, nil, tc.pub)
