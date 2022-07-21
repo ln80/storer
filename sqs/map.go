@@ -1,9 +1,14 @@
 package sqs
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
+)
+
+var (
+	ErrInvalidQueueMapping = errors.New("invalid queues mapping")
 )
 
 type QueueMap map[string]string
@@ -17,7 +22,7 @@ func ParseQueueMap(str string) (QueueMap, error) {
 	}
 
 	for _, entry := range strings.Split(str, ";") {
-		terr := fmt.Errorf("invalid queues mapping %s", entry)
+		terr := fmt.Errorf("%w: %s", ErrInvalidQueueMapping, entry)
 
 		splits := strings.Split(entry, "=")
 		if len(splits) != 2 {
@@ -38,6 +43,8 @@ func ParseQueueMap(str string) (QueueMap, error) {
 	return m, nil
 }
 
+// WildCards returns wildcards queues names which start with '*'.
+// These queues are receiving all events from the streams
 func (qm QueueMap) WildCards() []string {
 	m := make([]string, 0)
 	for dest := range qm {

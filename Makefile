@@ -6,12 +6,10 @@ DOCKER_NETWORK = lambda-local
 
 DYNAMODB_PORT  = 8070
 DYNAMODB_VOLUME = dynamodb-local-v2.0
-DYNAMODB_ENDPOINT = http://localhost:$(DYNAMODB_PORT)
 
 MINIO_PORT = 8071
 MINIO_CONSOLE_PORT = 8072
 MINIO_VOLUME = minio-local-v2.0
-MINIO_ENDPOINT = http://localhost:$(MINIO_PORT)
 
 start-dynamodb:
 	docker run -p $(DYNAMODB_PORT):8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -inMemory

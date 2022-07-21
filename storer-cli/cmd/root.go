@@ -1,7 +1,3 @@
-/*
-Copyright © 2022 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
@@ -13,7 +9,7 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "storer-cli",
-	Short: "Storer cli tool",
+	Short: "Storer CLI tool",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

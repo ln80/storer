@@ -30,7 +30,6 @@ func makeHandler(receiver signal.Receiver, worker signal.Processor) handler {
 		}
 
 		return receiver.Receive(ctx, data, worker)
-		// err = errors.New("fake error test alarm worker")
 	}
 }
 

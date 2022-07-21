@@ -26,7 +26,7 @@ func init() {
 				S3_BUCKET: %s
 		`, table, bucket)
 	}
-	queues, err := utils.ParseStringToMap(os.Getenv("SQS_PUBLISH_QUEUES"))
+	queues, err := sqs.ParseQueueMap(os.Getenv("SQS_PUBLISH_QUEUES"))
 	if err != nil {
 		log.Fatal(fmt.Errorf("invalid sqs queues env param %s, err: %w", os.Getenv("SQS_QUEUES"), err))
 	}
@@ -78,8 +78,6 @@ func makeHandler(fwd dynamo.Forwarder) handler {
 				log.Printf("event store must be immutable, unauthorized action: %s change: %v", ev.EventName, ev.Change)
 			}
 		}
-
-		// return errors.New("fake forwarder errors")
 
 		if len(recs) == 0 {
 			return nil
