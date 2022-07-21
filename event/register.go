@@ -32,6 +32,7 @@ type Register interface {
 	// the equivalent event in the global namespace must have type named as:
 	// {caller registry namespace}.{event struct name}.
 	// In other words equivalent event package name is the same as caller registry namespace.
+	// Note that it returns a value of the equivalent type from the global namesapce not a pointer.
 	Convert(evt interface{}) (interface{}, error)
 
 	// clear all namespace registries. Its mainly used in internal tests
@@ -107,7 +108,6 @@ func (r *register) Get(name string) (interface{}, error) {
 	return reflect.New(eType).Interface(), nil
 }
 
-// Convert implements Convert method of the Register interface
 func (r *register) Convert(evt interface{}) (convevt interface{}, err error) {
 	defer func() {
 		if r := recover(); r != nil {
