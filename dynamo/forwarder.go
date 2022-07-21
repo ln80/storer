@@ -80,10 +80,8 @@ func (f *forwarder) Forward(ctx context.Context, recs []Record) error {
 	}
 
 	// fan-out events to corresponding destinations
-	for dest, evs := range event.RouteEvents(mevs) {
-		if err := f.publisher.Publish(ctx, dest, evs); err != nil {
-			return err
-		}
+	if err := f.publisher.Broadcast(ctx, mevs); err != nil {
+		return err
 	}
 
 	// persist enriched events in a permanent store

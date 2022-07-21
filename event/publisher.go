@@ -11,7 +11,17 @@ type Publishable interface{ EvDests() []string }
 
 // Publisher presents the service responsible for publishing events to the given destinations
 type Publisher interface {
+
+	// Publish a chunk of events to a given destination.
+	// It may fails if the destination resource is not found in the publisher implementation config.
+	// The implementation must deal with batch sent ops and retry logic.
 	Publish(ctx context.Context, dest string, evts []Envelope) error
+
+	// Broadcast is an advanced version of Publish method.
+	// It takes a map of events grouped by global stream id.
+	// It uses the default RouteEvents function defined in the event package to filter and group events by destination.
+	// It also publish all given events to wildcards destination if they are supported by the publisher implementation.
+	Broadcast(ctx context.Context, evts map[string][]Envelope) error
 }
 
 // RouteEvents implements the fan-out logic, i.e group event per destinations.
@@ -34,7 +44,7 @@ func RouteEvents(mevs map[string][]Envelope) map[string][]Envelope {
 func eventDests(ctx context.Context, evt interface{}) (dests []string) {
 	pevt, ok := evt.(Publishable)
 	if !ok {
-		evt, err := NewRegisterFrom(ctx).Convert(pevt)
+		evt, err := NewRegisterFrom(ctx).Convert(evt)
 		if err != nil {
 			return
 		}

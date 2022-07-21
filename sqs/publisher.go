@@ -34,7 +34,7 @@ var (
 
 type publisher struct {
 	svc    ClientAPI
-	queues map[string]string
+	queues QueueMap
 	*PublisherConfig
 }
 
@@ -42,7 +42,7 @@ type PublisherConfig struct {
 	Serializer event.Serializer
 }
 
-func NewPublisher(svc ClientAPI, queues map[string]string, opts ...func(cfg *PublisherConfig)) event.Publisher {
+func NewPublisher(svc ClientAPI, queues QueueMap, opts ...func(cfg *PublisherConfig)) event.Publisher {
 	if svc == nil {
 		panic("event publisher invalid SQS client: nil value")
 	}
@@ -65,6 +65,42 @@ func NewPublisher(svc ClientAPI, queues map[string]string, opts ...func(cfg *Pub
 }
 
 var _ event.Publisher = &publisher{}
+
+func (p *publisher) Broadcast(ctx context.Context, mevts map[string][]event.Envelope) error {
+	if len(mevts) == 0 {
+		return nil
+	}
+
+	// skip publish if queues map is empty
+	if p.queues == nil {
+		return nil
+	}
+
+	// publish event to their configured destinations
+	for dest, evs := range event.RouteEvents(mevts) {
+		if err := p.Publish(ctx, dest, evs); err != nil {
+			return err
+		}
+	}
+
+	wcs := p.queues.WildCards()
+	if len(wcs) > 0 {
+		// flatten the events map
+		evts := make([]event.Envelope, 0)
+		for _, s := range mevts {
+			evts = append(evts, s...)
+		}
+		// send events to each defined wildcard destination regardless
+		// of the event-dest mapping.
+		for _, wc := range wcs {
+			if err := p.Publish(ctx, wc, evts); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
 
 func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envelope) error {
 	if len(evts) == 0 {
@@ -105,9 +141,6 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 
 		// resolve message group ID
 		msgGroupID := e.GlobalStreamID()
-		if evt, ok := e.Event().(interface{ EvMsgGroupID() string }); ok {
-			msgGroupID = evt.EvMsgGroupID()
-		}
 
 		entry := types.SendMessageBatchRequestEntry{
 			Id:                     aws.String(e.ID()),
@@ -115,9 +148,9 @@ func (p *publisher) Publish(ctx context.Context, dest string, evts []event.Envel
 			MessageDeduplicationId: aws.String(e.ID()),
 			MessageBody:            aws.String(string(msg)),
 			MessageAttributes: map[string]types.MessageAttributeValue{
-				"GSTMID": {
+				"StmID": {
 					DataType:    aws.String("String"),
-					StringValue: aws.String(e.GlobalStreamID()),
+					StringValue: aws.String(e.StreamID()),
 				},
 				"GVer": {
 					DataType:    aws.String("Number"),
@@ -165,8 +198,8 @@ func (p *publisher) doSendMessageBatch(ctx context.Context, input *sqs.SendMessa
 		return fmt.Errorf("%w: %v", ErrPublishEventFailed, err)
 	}
 
-	attempts := 1
-	for out != nil && len(out.Failed) > 0 && attempts <= 5 {
+	attempts := 0
+	for out != nil && len(out.Failed) > 0 && attempts < 5 {
 		time.Sleep(time.Duration(attempts) * 50 * time.Millisecond)
 		out, err = p.svc.SendMessageBatch(ctx, input)
 		if err != nil {
@@ -176,7 +209,7 @@ func (p *publisher) doSendMessageBatch(ctx context.Context, input *sqs.SendMessa
 	}
 
 	if out != nil && len(out.Failed) > 0 {
-		return fmt.Errorf("%w: failed entries: %v", ErrPublishEventFailed, out.Failed)
+		return fmt.Errorf("%w: failed entries: %v err: %v", ErrPublishEventFailed, out.Failed, err)
 	}
 	return nil
 }

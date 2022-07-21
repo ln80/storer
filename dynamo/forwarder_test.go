@@ -30,6 +30,15 @@ func (p *publisherMock) Publish(ctx context.Context, dest string, envs []event.E
 	return nil
 }
 
+func (p *publisherMock) Broadcast(ctx context.Context, mevts map[string][]event.Envelope) error {
+	for dest, evs := range event.RouteEvents(mevts) {
+		if err := p.Publish(ctx, dest, evs); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type persisterMock struct {
 	err    error
 	traces map[string][]event.Envelope
@@ -107,7 +116,6 @@ func TestNewForwarder(t *testing.T) {
 						t.Fatal("expect to panics")
 					}
 				}
-
 			}()
 
 			NewForwarder(tc.dbsvc, tc.table, nil, tc.pub)

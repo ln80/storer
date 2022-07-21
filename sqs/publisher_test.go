@@ -11,15 +11,11 @@ import (
 	"github.com/ln80/storer/testutil"
 )
 
-const msgGroupID = "eventGrpID"
+// const msgGroupID = "eventGrpID"
 
 type event1 struct{ Val string }
 
 type event2 struct{ Val string }
-
-func (evt *event2) EvMsgGroupID() string {
-	return msgGroupID
-}
 
 func TestEventPublisher(t *testing.T) {
 	ctx := context.Background()
@@ -37,7 +33,7 @@ func TestEventPublisher(t *testing.T) {
 		&event1{
 			Val: "test content 2",
 		},
-		&event2{ // Note: the 3rd event belongs to a different Message Group
+		&event2{
 			Val: "test content 3",
 		},
 	}
@@ -52,6 +48,7 @@ func TestEventPublisher(t *testing.T) {
 	envs := event.Envelop(ctx, event.NewStreamID(stmID), evts, func(env event.RWEnvelope) {
 		env.SetAt(evtAt)
 		evtAt = evtAt.Add(1 * time.Minute)
+		env.SetDests([]string{dest1}) // note that dest can also be configured at event-level by impl EvDests method
 	})
 
 	t.Run("test publish with empty queues map", func(t *testing.T) {
@@ -106,7 +103,24 @@ func TestEventPublisher(t *testing.T) {
 		if wantl, l := len(envs), len(sqsvc.traces[queues[dest1]]); wantl != l {
 			t.Fatalf("expect traces len be %v, got %d", wantl, l)
 		}
-		if wantgrp, grp := msgGroupID, *sqsvc.traces[queues[dest1]][2].MessageGroupId; wantgrp != grp {
+		if wantgrp, grp := stmID, *sqsvc.traces[queues[dest1]][2].MessageGroupId; wantgrp != grp {
+			t.Fatalf("expect group ids be equals, got %s, %s", wantgrp, grp)
+		}
+	})
+
+	t.Run("test successfully broadcast events", func(t *testing.T) {
+		sqsvc := &clientMock{}
+		queues := map[string]string{dest1: queue}
+		pub := NewPublisher(sqsvc, queues)
+
+		menvs := map[string][]event.Envelope{"stmID": envs}
+		if err := pub.Broadcast(ctx, menvs); err != nil {
+			t.Fatalf("expect err be nil, got %v", err)
+		}
+		if wantl, l := len(envs), len(sqsvc.traces[queues[dest1]]); wantl != l {
+			t.Fatalf("expect traces len be %v, got %d", wantl, l)
+		}
+		if wantgrp, grp := stmID, *sqsvc.traces[queues[dest1]][2].MessageGroupId; wantgrp != grp {
 			t.Fatalf("expect group ids be equals, got %s, %s", wantgrp, grp)
 		}
 	})

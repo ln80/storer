@@ -6,7 +6,8 @@ import (
 	"strings"
 )
 
-// resolveType of the given value (mainly an event),
+// resolveType of the given value which is mainly an event.
+// It accepts both pointers and values. Pointers type are replaced with their values type.
 func resolveType(v interface{}) (reflect.Type, string) {
 	rType := reflect.TypeOf(v)
 	if rType.Kind() == reflect.Ptr {
@@ -17,16 +18,13 @@ func resolveType(v interface{}) (reflect.Type, string) {
 
 // TypeOf returns the type of a value or its pointer
 func TypeOf(v interface{}) (vtype string) {
-	if v == nil {
-		return ""
-	}
 	_, vtype = resolveType(v)
 	return
 }
 
 // TypeOfWithNamspace returns the type of the value using the given namepspace.
-// by default the type name / value is {package name}.{value type name}.
-// The return is changed to {namespace}.{value type name} id namespace is not empty
+// By default the type format is {package name}.{value type name}.
+// The return is changed to {namespace}.{value type name} if namespace is not empty
 func TypeOfWithNamspace(namespace string, v interface{}) string {
 	t := TypeOf(v)
 	if namespace != "" {
